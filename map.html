@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Recovery Intelligence Map | TerraNova</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-o9N1j7kP5v1r2H2T9GkT1p1xvyvM3pB7rZl8J1uX+3s="
+      crossorigin=""
+    />
+    <link rel="stylesheet" href="styles/map.css" />
+  </head>
+  <body>
+    <div class="map-shell">
+      <aside class="control-panel">
+        <div class="panel-header">
+          <p class="eyebrow">Recovery Intelligence</p>
+          <h1>Customize your analysis</h1>
+          <p class="location">Northern Sierra · Last updated 2 hrs ago</p>
+        </div>
+
+        <section class="panel-block">
+          <p class="block-label">I care about</p>
+          <div class="chip-list">
+            <button class="chip active" data-center="39.54,-121.48" data-zoom="9">Home buyer</button>
+            <button class="chip" data-center="38.95,-120.11" data-zoom="9">Land manager</button>
+            <button class="chip" data-center="40.38,-122.15" data-zoom="8">County planner</button>
+          </div>
+        </section>
+
+        <section class="panel-block priorities">
+          <div class="block-header">
+            <p>Your priorities</p>
+            <span>Editable</span>
+          </div>
+          <div class="priority">
+            <p>Rebuild risk protection</p>
+            <div class="progress"><span style="width: 86%"></span></div>
+            <span class="score">86%</span>
+          </div>
+          <div class="priority">
+            <p>Flood risk protection</p>
+            <div class="progress"><span style="width: 58%"></span></div>
+            <span class="score">58%</span>
+          </div>
+          <div class="priority">
+            <p>Habitat stability</p>
+            <div class="progress"><span style="width: 42%"></span></div>
+            <span class="score">42%</span>
+          </div>
+          <div class="priority">
+            <p>Infrastructure</p>
+            <div class="progress"><span style="width: 70%"></span></div>
+            <span class="score">70%</span>
+          </div>
+        </section>
+
+        <section class="panel-block">
+          <div class="block-header">
+            <p>Planning horizon</p>
+            <span>Years</span>
+          </div>
+          <div class="slider">
+            <input type="range" min="1" max="10" value="3" />
+            <div class="slider-value" data-slider-value>3 yrs</div>
+          </div>
+        </section>
+
+        <section class="panel-block">
+          <p class="block-label">Map layers</p>
+          <label class="layer">
+            <input type="checkbox" checked />
+            <span>Burn severity</span>
+          </label>
+          <label class="layer">
+            <input type="checkbox" checked />
+            <span>Flood risk</span>
+          </label>
+          <label class="layer">
+            <input type="checkbox" />
+            <span>Erosion/block risk</span>
+          </label>
+          <label class="layer">
+            <input type="checkbox" />
+            <span>USGS soil maps</span>
+          </label>
+        </section>
+
+        <section class="legend">
+          <h2>Legend</h2>
+          <div class="legend-item"><span class="dot high"></span>High need</div>
+          <div class="legend-item"><span class="dot medium"></span>Moderate need</div>
+          <div class="legend-item"><span class="dot low"></span>Low need</div>
+        </section>
+      </aside>
+
+      <section class="map-panel">
+        <header class="map-header">
+          <div>
+            <p class="eyebrow">Live storm cycle</p>
+            <h2>Forecast window: next 96 hours</h2>
+          </div>
+          <div class="header-meta">
+            <div>
+              <p class="label">Confidence</p>
+              <strong>92%</strong>
+            </div>
+            <div>
+              <p class="label">Incidents</p>
+              <strong>7 alerts</strong>
+            </div>
+            <button class="btn small ghost" onclick="window.location.href='login.html'">Share briefing</button>
+          </div>
+        </header>
+        <div id="map"></div>
+        <div class="map-tip">
+          <p>
+            Tap a marker to view burn intensity, debris flow likelihood, and suggested restoration actions.
+          </p>
+        </div>
+        <div class="insight-rail">
+          <article>
+            <p class="rail-label">Action</p>
+            <strong>Deploy wattles on Mosquito Ridge Rd.</strong>
+            <span>High debris risk · due 12 hrs</span>
+          </article>
+          <article>
+            <p class="rail-label">Monitoring</p>
+            <strong>Stream gauges synced · 4 anomalies</strong>
+            <span>Sent to hydrology team</span>
+          </article>
+          <article>
+            <p class="rail-label">Community</p>
+            <strong>Town hall briefing ready</strong>
+            <span>Shareable guest link active</span>
+          </article>
+        </div>
+      </section>
+    </div>
+
+    <script
+      src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+      integrity="sha256-VFfQVH6zYtSvt1M6Q671V7EI6uHqGgfRNu6IeB0hXyM="
+      crossorigin=""
+    ></script>
+    <script src="scripts/map.js"></script>
+  </body>
+</html>
