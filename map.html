@@ -70,6 +70,41 @@
           </div>
         </section>
 
+        <section class="panel-block">
+          <p class="block-label">Map layers</p>
+          <label class="layer" data-tooltip="Burn severity: Pixel-level high/moderate/low/unburned classes derived from Landsat-style segmentation.">
+            <input
+              type="checkbox"
+              data-layer="burnSeverity"
+              checked
+            />
+            <span>Burn severity</span>
+          </label>
+          <label class="layer" data-tooltip="Watershed stress: Headwaters and drainage basins where ash, debris, and runoff pressure water systems.">
+            <input
+              type="checkbox"
+              data-layer="watershedStress"
+              checked
+            />
+            <span>Watershed stress</span>
+          </label>
+          <label class="layer" data-tooltip="Slope stability: Steep terrain likely to shed debris or trigger slides, especially after rain.">
+            <input
+              type="checkbox"
+              data-layer="erosionRisk"
+              checked
+            />
+            <span>Slope stability</span>
+          </label>
+          <label class="layer" data-tooltip="Infrastructure exposure: Roads, utilities, and communications corridors flagged as at-risk from fire or debris.">
+            <input
+              type="checkbox"
+              data-layer="infrastructureRisk"
+            />
+            <span>Infrastructure exposure</span>
+          </label>
+        </section>
+
         <section class="panel-block priorities">
           <div class="block-header">
             <p>Analysis priorities</p>
@@ -112,41 +147,6 @@
             <input type="range" min="0" max="4" value="2" data-forecast-slider />
             <div class="slider-value" data-forecast-desc>First MTBS-inspired burn severity mapping</div>
           </div>
-        </section>
-
-        <section class="panel-block">
-          <p class="block-label">Map layers</p>
-          <label class="layer" data-tooltip="Burn severity: Pixel-level high/moderate/low/unburned classes derived from Landsat-style segmentation.">
-            <input
-              type="checkbox"
-              data-layer="burnSeverity"
-              checked
-            />
-            <span>Burn severity</span>
-          </label>
-          <label class="layer" data-tooltip="Watershed stress: Headwaters and drainage basins where ash, debris, and runoff pressure water systems.">
-            <input
-              type="checkbox"
-              data-layer="watershedStress"
-              checked
-            />
-            <span>Watershed stress</span>
-          </label>
-          <label class="layer" data-tooltip="Slope stability: Steep terrain likely to shed debris or trigger slides, especially after rain.">
-            <input
-              type="checkbox"
-              data-layer="erosionRisk"
-              checked
-            />
-            <span>Slope stability</span>
-          </label>
-          <label class="layer" data-tooltip="Infrastructure exposure: Roads, utilities, and communications corridors flagged as at-risk from fire or debris.">
-            <input
-              type="checkbox"
-              data-layer="infrastructureRisk"
-            />
-            <span>Infrastructure exposure</span>
-          </label>
         </section>
 
         <section class="legend">

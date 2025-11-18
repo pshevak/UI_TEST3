@@ -94,7 +94,7 @@ def pick_fire(fire_id: Optional[str]) -> Dict:
   return FIRE_CATALOG[0]
 
 
-def parse_priority(value: float | None, fallback: float) -> float:
+def parse_priority(value: Optional[float], fallback: float) -> float:
   if value is None:
     value = fallback
   return clamp(float(value) / 100.0, 0.05, 1.0)
