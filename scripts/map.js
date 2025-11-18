@@ -74,6 +74,21 @@ const state = {
   timeline: 2,
   priorities: { ...DEFAULT_PRIORITIES },
   selectedSuggestionIndex: -1,
+  selectedState: null,
+  selectedYear: null,
+  selectedMonth: null,
+};
+
+// Initialize year dropdown (1994-2025)
+const initializeYearDropdown = () => {
+  if (!els.yearSelect) return;
+  
+  for (let year = 2025; year >= 1994; year--) {
+    const option = document.createElement('option');
+    option.value = year.toString();
+    option.textContent = year.toString();
+    els.yearSelect.appendChild(option);
+  }
 };
 
 // US States data for autocomplete (frontend only)
@@ -153,6 +168,9 @@ const els = {
   layerToggles: document.querySelectorAll('.layer input[data-layer]'),
   searchInput: document.querySelector('[data-search-input]'),
   autocompleteSuggestions: document.querySelector('[data-autocomplete-suggestions]'),
+  yearSelect: document.querySelector('[data-year-select]'),
+  monthSelect: document.querySelector('[data-month-select]'),
+  searchBtn: document.querySelector('[data-search-btn]'),
 };
 
 const debounce = (fn, delay = 350) => {
@@ -691,8 +709,10 @@ const renderAutocomplete = (suggestions) => {
       if (els.searchInput) {
         els.searchInput.value = selectedState.name;
       }
+      state.selectedState = selectedState.code;
       els.autocompleteSuggestions.style.display = 'none';
       state.selectedSuggestionIndex = -1;
+      updateSearchButtonState();
     });
     
     item.addEventListener('mouseenter', () => {
@@ -712,6 +732,20 @@ const updateAutocompleteSelection = () => {
       item.classList.remove('selected');
     }
   });
+};
+
+const updateSearchButtonState = () => {
+  if (!els.searchBtn) return;
+  
+  const hasState = state.selectedState !== null;
+  const hasYear = state.selectedYear !== null && state.selectedYear !== '';
+  const hasMonth = state.selectedMonth !== null && state.selectedMonth !== '';
+  
+  if (hasState && hasYear && hasMonth) {
+    els.searchBtn.disabled = false;
+  } else {
+    els.searchBtn.disabled = true;
+  }
 };
 
 // Search input event handlers
@@ -766,5 +800,39 @@ if (els.searchInput) {
     }
   });
 }
+
+// Year and month dropdown handlers
+if (els.yearSelect) {
+  els.yearSelect.addEventListener('change', (e) => {
+    state.selectedYear = e.target.value;
+    updateSearchButtonState();
+  });
+}
+
+if (els.monthSelect) {
+  els.monthSelect.addEventListener('change', (e) => {
+    state.selectedMonth = e.target.value;
+    updateSearchButtonState();
+  });
+}
+
+// Search button handler
+if (els.searchBtn) {
+  els.searchBtn.addEventListener('click', () => {
+    if (els.searchBtn.disabled) return;
+    
+    console.log('Search clicked:', {
+      state: state.selectedState,
+      year: state.selectedYear,
+      month: state.selectedMonth
+    });
+    
+    // TODO: Implement actual search/filter logic here
+    // This will filter fires based on selected state, year, and month
+  });
+}
+
+// Initialize year dropdown on page load
+initializeYearDropdown();
 
 fetchFireCatalog().then(loadScenario);
