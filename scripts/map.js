@@ -1,203 +1,53 @@
-const FALLBACK_SCENARIOS = {
-  'home-buyer': {
-    role: 'Home buyer',
-    roleKey: 'home-buyer',
-    center: [39.54, -121.48],
-    zoom: 9,
-    stats: {
-      confidence: 0.92,
-      incidents: 7,
-      updated: 'Northern Sierra · Last updated 2 hrs ago',
-    },
-    selectedFireId: 'home-buyer-fire-0',
-    layers: {
-      burnSeverity: [
-        { coords: [39.3, -121.2], radius: 22000, color: '#ff4e1f', intensity: 0.88 },
-        { coords: [39.9, -122.2], radius: 18000, color: '#ff9b2f', intensity: 0.64 },
-      ],
-      floodRisk: [
-        { coords: [39.18, -121.6], radius: 20000, color: '#33b5ff', intensity: 0.58 },
-      ],
-      erosionRisk: [
-        { coords: [39.45, -121.05], radius: 15000, color: '#d16cff', intensity: 0.52 },
-      ],
-      soilStability: [
-        { coords: [39.5, -121.3], radius: 24000, color: '#93c47d', intensity: 0.41 },
-      ],
-    },
-    markers: [
-      {
-        id: 'home-buyer-fire-0',
-        coords: [39.54, -121.48],
-        title: 'Feather River Canyon',
-        details:
-          'High burn severity. Prioritize culvert clearing, hydrophobic soil treatment, and wattles along slopes.',
-      },
-      {
-        id: 'home-buyer-fire-1',
-        coords: [39.1, -121.4],
-        title: 'Mosquito Ridge',
-        details: 'Roadside slopes losing cohesion. Deploy wattles and monitor slope stability.',
-      },
-    ],
-    priorities: [
-      { label: 'Rebuild risk protection', score: 86 },
-      { label: 'Flood risk protection', score: 58 },
-      { label: 'Habitat stability', score: 42 },
-      { label: 'Infrastructure', score: 70 },
-    ],
-    insights: [
-      {
-        category: 'Action',
-        title: 'Deploy wattles on Mosquito Ridge Rd.',
-        detail: 'High debris risk · due 12 hrs',
-      },
-      {
-        category: 'Monitoring',
-        title: 'Stream gauges synced · 4 anomalies',
-        detail: 'Sent to hydrology team',
-      },
-      {
-        category: 'Community',
-        title: 'Town hall briefing ready',
-        detail: 'Shareable guest link active',
-      },
-    ],
-    mapTip:
-      'Tap a marker to view burn intensity, debris flow likelihood, and suggested restoration actions.',
+const FALLBACK_FIRES = [
+  {
+    id: 'camp-fire-2018',
+    name: 'Camp Fire',
+    state: 'CA',
+    lat: 39.73,
+    lng: -121.6,
+    acres: 153336,
+    year: 2018,
+    region: 'Paradise & Magalia',
   },
-  'land-manager': {
-    role: 'Land manager',
-    roleKey: 'land-manager',
-    center: [38.95, -120.11],
-    zoom: 9,
-    stats: {
-      confidence: 0.9,
-      incidents: 6,
-      updated: 'South Lake Tahoe Rim · Updated 1 hr ago',
-    },
-    selectedFireId: 'land-manager-fire-0',
-    layers: {
-      burnSeverity: [
-        { coords: [38.9, -120.3], radius: 20000, color: '#ff4e1f', intensity: 0.7 },
-      ],
-      floodRisk: [
-        { coords: [38.85, -120.15], radius: 24000, color: '#33b5ff', intensity: 0.55 },
-      ],
-      erosionRisk: [
-        { coords: [38.78, -120.05], radius: 15000, color: '#d16cff', intensity: 0.62 },
-      ],
-      soilStability: [
-        { coords: [38.96, -120.05], radius: 21000, color: '#93c47d', intensity: 0.46 },
-      ],
-    },
-    markers: [
-      {
-        id: 'land-manager-fire-0',
-        coords: [38.95, -120.11],
-        title: 'South Lake Tahoe Rim',
-        details:
-          'Moderate burn zone. Focus on debris flow barriers and reseeding native grasses before winter storms.',
-      },
-      {
-        id: 'land-manager-fire-1',
-        coords: [38.82, -120.04],
-        title: 'Echo Summit',
-        details: 'Granite faces shedding rockfall when saturated. Stage mesh netting.',
-      },
-    ],
-    priorities: [
-      { label: 'Habitat stability', score: 82 },
-      { label: 'Flood risk protection', score: 68 },
-      { label: 'Rebuild risk protection', score: 63 },
-      { label: 'Infrastructure', score: 57 },
-    ],
-    insights: [
-      {
-        category: 'Action',
-        title: 'Stage mulching crews near Fallen Leaf Lake',
-        detail: 'Scarp erosion accelerating',
-      },
-      {
-        category: 'Monitoring',
-        title: 'Drone pass confirmed regrowth plots',
-        detail: 'NDVI improving +6%',
-      },
-      {
-        category: 'Community',
-        title: 'Brief tribal partners on reseeding plan',
-        detail: 'Meeting scheduled tomorrow 08:00 PST',
-      },
-    ],
-    mapTip: 'Tap a marker to learn reseeding status and slope stability guidance.',
+  {
+    id: 'dixie-fire-2021',
+    name: 'Dixie Fire',
+    state: 'CA',
+    lat: 40.18,
+    lng: -121.23,
+    acres: 963309,
+    year: 2021,
+    region: 'Feather River Watershed',
   },
-  'county-planner': {
-    role: 'County planner',
-    roleKey: 'county-planner',
-    center: [40.38, -122.15],
-    zoom: 8,
-    stats: {
-      confidence: 0.93,
-      incidents: 8,
-      updated: 'Shasta foothills · Updated 45 mins ago',
-    },
-    selectedFireId: 'county-planner-fire-0',
-    layers: {
-      burnSeverity: [
-        { coords: [40.2, -122.3], radius: 26000, color: '#ff4e1f', intensity: 0.8 },
-      ],
-      floodRisk: [
-        { coords: [40.4, -122.0], radius: 28000, color: '#33b5ff', intensity: 0.67 },
-        { coords: [40.55, -122.45], radius: 20000, color: '#1f7bdc', intensity: 0.52 },
-      ],
-      erosionRisk: [
-        { coords: [40.1, -121.8], radius: 21000, color: '#d16cff', intensity: 0.49 },
-      ],
-      soilStability: [
-        { coords: [40.45, -122.25], radius: 25000, color: '#93c47d', intensity: 0.45 },
-      ],
-    },
-    markers: [
-      {
-        id: 'county-planner-fire-0',
-        coords: [40.38, -122.15],
-        title: 'Shasta foothills',
-        details:
-          'Critical habitat overlap. Coordinate BAER crews with CAL FIRE to stabilize ridgelines.',
-      },
-      {
-        id: 'county-planner-fire-1',
-        coords: [40.7, -122.9],
-        title: 'Trinity Corridor',
-        details: 'Debris basins at 68% capacity. Plan mechanical clearing.',
-      },
-    ],
-    priorities: [
-      { label: 'Infrastructure', score: 78 },
-      { label: 'Flood risk protection', score: 74 },
-      { label: 'Rebuild risk protection', score: 66 },
-      { label: 'Habitat stability', score: 55 },
-    ],
-    insights: [
-      {
-        category: 'Action',
-        title: 'Fast-track culvert permits in Happy Valley',
-        detail: 'Permit queue trimmed to 4 hrs',
-      },
-      {
-        category: 'Monitoring',
-        title: 'Telemetry: 7 pump stations at alert',
-        detail: 'Dispatch crews before 22:00',
-      },
-      {
-        category: 'Community',
-        title: 'County briefing deck synced to portal',
-        detail: 'Share with Board of Sups',
-      },
-    ],
-    mapTip: 'Tap a county to inspect infrastructure readiness and evacuation triggers.',
+  {
+    id: 'bootleg-fire-2021',
+    name: 'Bootleg Fire',
+    state: 'OR',
+    lat: 42.56,
+    lng: -121.5,
+    acres: 413765,
+    year: 2021,
+    region: 'Fremont-Winema NF',
   },
-};
+  {
+    id: 'maui-fire-2023',
+    name: 'Lahaina Wildfire',
+    state: 'HI',
+    lat: 20.88,
+    lng: -156.68,
+    acres: 6700,
+    year: 2023,
+    region: 'West Maui',
+  },
+];
+
+const TIMELINE_STAGES = [
+  { value: 0, label: 'Pre-fire baseline', description: 'Vegetation health before ignition' },
+  { value: 1, label: 'Active response (Day 0)', description: 'Fire perimeter with live suppression actions' },
+  { value: 2, label: 'Initial assessment (Day 7)', description: 'First MTBS-inspired burn severity mapping' },
+  { value: 3, label: 'Stabilization phase (Day 30)', description: 'Treatment crews in the field; erosion control active' },
+  { value: 4, label: 'Recovery outlook (Year 1)', description: 'Predicted vegetation recovery and infrastructure repairs' },
+];
 
 const inferApiBase = () => {
   const { protocol, hostname, port } = window.location;
@@ -212,98 +62,205 @@ const inferApiBase = () => {
 };
 
 const API_BASE_URL = window.TERRANOVA_API_BASE || inferApiBase();
-const state = {
-  role: 'home-buyer',
-  horizon: 3,
-  fireId: null,
+
+const DEFAULT_PRIORITIES = {
+  community: 70,
+  watershed: 55,
+  infrastructure: 60,
 };
 
-const map = L.map('map', {
-  zoomControl: false,
-}).setView([39.3, -120.9], 7);
+const state = {
+  fireId: FALLBACK_FIRES[0].id,
+  timeline: 2,
+  priorities: { ...DEFAULT_PRIORITIES },
+};
 
-let baseLayer;
+let fireCatalog = [...FALLBACK_FIRES];
+
+const map = L.map('map', { zoomControl: false }).setView([FALLBACK_FIRES[0].lat, FALLBACK_FIRES[0].lng], 8);
+
 if (window.L?.esri?.basemapLayer) {
-  baseLayer = L.esri.basemapLayer('Topographic').addTo(map);
+  L.esri.basemapLayer('Topographic').addTo(map);
 } else {
-  baseLayer = L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+  L.tileLayer('https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors',
   }).addTo(map);
 }
 
 const featureLayerGroups = {
-  burnSeverity: L.layerGroup(),
-  floodRisk: L.layerGroup(),
-  erosionRisk: L.layerGroup(),
-  soilStability: L.layerGroup(),
+  burnSeverity: L.layerGroup().addTo(map),
+  watershedStress: L.layerGroup().addTo(map),
+  erosionRisk: L.layerGroup().addTo(map),
+  infrastructureRisk: L.layerGroup().addTo(map),
 };
 
-const markersLayer = L.layerGroup().addTo(map);
-
-Object.keys(featureLayerGroups).forEach((key) => {
-  featureLayerGroups[key].addTo(map);
-});
+const firePinsLayer = L.layerGroup().addTo(map);
+const hotspotLayer = L.layerGroup().addTo(map);
 
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-const chips = document.querySelectorAll('.chip');
-const slider = document.querySelector('.slider input');
-const sliderValue = document.querySelector('[data-slider-value]');
-const priorityContainer = document.querySelector('[data-priorities]');
-const insightContainer = document.querySelector('[data-insights]');
-const mapTipText = document.querySelector('[data-map-tip]');
-const locationText = document.querySelector('[data-location]');
-const confidenceText = document.querySelector('[data-confidence]');
-const incidentsText = document.querySelector('[data-incidents]');
-const layerToggles = document.querySelectorAll('.layer input[data-layer]');
+const els = {
+  fireList: document.querySelector('[data-fire-list]'),
+  fireTitle: document.querySelector('[data-fire-title]'),
+  fireMeta: document.querySelector('[data-fire-meta]'),
+  mapHeadline: document.querySelector('[data-map-headline]'),
+  mapSubhead: document.querySelector('[data-map-subhead]'),
+  priorityContainer: document.querySelector('[data-priorities]'),
+  insightContainer: document.querySelector('[data-insights]'),
+  nextSteps: document.querySelector('[data-next-steps]'),
+  mapTip: document.querySelector('[data-map-tip]'),
+  confidence: document.querySelector('[data-confidence]'),
+  incidents: document.querySelector('[data-incidents]'),
+  forecastLabel: document.querySelector('[data-forecast-label]'),
+  forecastDesc: document.querySelector('[data-forecast-desc]'),
+  forecastSlider: document.querySelector('[data-forecast-slider]'),
+  priorityValues: {
+    community: document.querySelector('[data-priority-value="community"]'),
+    watershed: document.querySelector('[data-priority-value="watershed"]'),
+    infrastructure: document.querySelector('[data-priority-value="infrastructure"]'),
+  },
+  prioritySliders: document.querySelectorAll('[data-priority-slider]'),
+  layerToggles: document.querySelectorAll('.layer input[data-layer]'),
+};
 
-const setChipActive = (roleKey) => {
-  chips.forEach((chip) => {
-    const isActive = chip.dataset.role === roleKey;
-    chip.classList.toggle('active', isActive);
+const debounce = (fn, delay = 350) => {
+  let timeout;
+  return (...args) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => fn(...args), delay);
+  };
+};
+
+const formatNumber = (value) => value.toLocaleString();
+
+const setPriorityDisplays = () => {
+  Object.entries(state.priorities).forEach(([key, value]) => {
+    const target = els.priorityValues[key];
+    if (target) target.textContent = `${value}%`;
   });
 };
 
-const updateSliderValue = () => {
-  if (sliderValue && slider) {
-    sliderValue.textContent = `${slider.value} yrs`;
+const updateForecastLabels = () => {
+  if (!els.forecastSlider) return;
+  const stage = TIMELINE_STAGES[state.timeline] || TIMELINE_STAGES[2];
+  if (els.forecastLabel) {
+    els.forecastLabel.textContent = stage.label;
+  }
+  if (els.forecastDesc) {
+    els.forecastDesc.textContent = stage.description;
+  }
+  if (els.mapSubhead) {
+    els.mapSubhead.textContent = stage.label;
   }
 };
 
-const formatScore = (value) => `${value}%`;
+const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
-const renderPriorities = (priorities = []) => {
-  if (!priorityContainer) return;
-  if (!priorities.length) {
-    priorityContainer.innerHTML = '<p class="muted small">No priorities available.</p>';
-    return;
-  }
-  priorityContainer.innerHTML = priorities
+const jitter = (value, delta) => value + (Math.random() * 2 - 1) * delta;
+
+const renderFireList = (fires) => {
+  if (!els.fireList) return;
+  els.fireList.innerHTML = fires
     .map(
-      (priority) => `
-      <div class="priority">
-        <p>${priority.label}</p>
-        <div class="progress"><span style="width: ${priority.score}%"></span></div>
-        <span class="score">${formatScore(priority.score)}</span>
-      </div>
+      (fire) => `
+      <button class="fire-card ${fire.id === state.fireId ? 'active' : ''}" title="Focus on ${
+        fire.name
+      }" data-fire-id="${fire.id}">
+        <div>
+          <strong>${fire.name}</strong>
+          <span>${fire.state} · ${fire.year || fire.start_date?.split('-')[0] || ''}</span>
+        </div>
+        <span class="badge">${formatNumber(fire.acres || 0)} ac</span>
+      </button>
     `,
     )
     .join('');
+
+  els.fireList.querySelectorAll('[data-fire-id]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const fireId = button.dataset.fireId;
+      if (!fireId || fireId === state.fireId) return;
+      state.fireId = fireId;
+      renderFireList(fireCatalog);
+      renderFirePins(fireCatalog);
+      loadScenario();
+    });
+  });
+};
+
+const renderFirePins = (fires) => {
+  firePinsLayer.clearLayers();
+  fires.forEach((fire) => {
+    if (!fire.lat || !fire.lng) return;
+    const isActive = fire.id === state.fireId;
+    const marker = L.marker([fire.lat, fire.lng], { opacity: isActive ? 1 : 0.85 }).addTo(firePinsLayer);
+    marker.bindPopup(`<strong>${fire.name}</strong><p>${fire.region || ''}</p>`);
+    marker.on('click', () => {
+      state.fireId = fire.id;
+      renderFireList(fireCatalog);
+      loadScenario();
+    });
+  });
+};
+
+const renderLayerGroup = (key, features = []) => {
+  const group = featureLayerGroups[key];
+  if (!group) return;
+  group.clearLayers();
+  features.forEach((feature) => {
+    if (!feature?.coords) return;
+    L.circle(feature.coords, {
+      radius: feature.radius || 12000,
+      color: feature.color || '#ff6a00',
+      fillColor: feature.color || '#ff6a00',
+      fillOpacity: 0.15 + (feature.intensity || 0) * 0.35,
+      weight: 1.1,
+    }).addTo(group);
+  });
+};
+
+const renderLayers = (layers = {}) => {
+  Object.keys(featureLayerGroups).forEach((key) => {
+    renderLayerGroup(key, layers[key] || []);
+  });
+};
+
+const syncLayerVisibility = () => {
+  els.layerToggles.forEach((toggle) => {
+    const key = toggle.dataset.layer;
+    const group = featureLayerGroups[key];
+    if (!group) return;
+    if (toggle.checked) {
+      map.addLayer(group);
+    } else {
+      map.removeLayer(group);
+    }
+  });
+};
+
+const renderHotspots = (markers = []) => {
+  hotspotLayer.clearLayers();
+  markers.forEach((marker) => {
+    if (!marker?.coords) return;
+    const popup = `<strong>${marker.title || 'Sector'}</strong><p>${marker.details || ''}</p>`;
+    L.marker(marker.coords, { riseOnHover: true }).addTo(hotspotLayer).bindPopup(popup);
+  });
 };
 
 const renderInsights = (insights = []) => {
-  if (!insightContainer) return;
+  if (!els.insightContainer) return;
   if (!insights.length) {
-    insightContainer.innerHTML = `
+    els.insightContainer.innerHTML = `
       <article>
         <p class="rail-label">No insights</p>
         <strong>All clear for now.</strong>
-        <span>Refresh the scenario to pull new actions.</span>
+        <span>Adjust the sliders to refresh the model.</span>
       </article>
     `;
     return;
   }
-  insightContainer.innerHTML = insights
+
+  els.insightContainer.innerHTML = insights
     .map(
       (insight) => `
         <article>
@@ -316,187 +273,347 @@ const renderInsights = (insights = []) => {
     .join('');
 };
 
-const renderMarkers = (markers = []) => {
-  markersLayer.clearLayers();
-  markers.forEach((marker) => {
-    if (!marker?.coords) return;
-    const isSelected = marker.id && marker.id === state.fireId;
-    const leafletMarker = L.marker(marker.coords, {
-      riseOnHover: true,
-      opacity: isSelected ? 1 : 0.85,
-    });
-
-    leafletMarker
-      .addTo(markersLayer)
-      .bindPopup(
-        `<strong>${marker.title || 'Field marker'}</strong><p>${marker.details || ''}</p>${
-          marker.id ? '<p class="muted small">Click marker to focus this fire.</p>' : ''
-        }`,
-      );
-
-    if (marker.id) {
-      leafletMarker.on('click', () => {
-        state.fireId = marker.id;
-        loadScenario(state.role, state.horizon, marker.id);
-      });
-    }
-  });
+const renderPriorities = (priorities = []) => {
+  if (!els.priorityContainer) return;
+  if (!priorities.length) {
+    els.priorityContainer.innerHTML = '<p class="muted small">No priorities calculated.</p>';
+    return;
+  }
+  els.priorityContainer.innerHTML = priorities
+    .map(
+      (priority) => `
+        <div class="priority-card">
+          <strong>${priority.label} · ${priority.score}%</strong>
+          <span>${priority.summary}</span>
+        </div>
+      `,
+    )
+    .join('');
 };
 
-const renderLayerGroup = (layerKey, features = []) => {
-  const group = featureLayerGroups[layerKey];
-  if (!group) return;
-  group.clearLayers();
-  features.forEach((feature) => {
-    if (!feature?.coords) return;
-    L.circle(feature.coords, {
-      radius: feature.radius || 15000,
-      color: feature.color || '#ff9b2f',
-      fillColor: feature.color || '#ff9b2f',
-      fillOpacity: 0.15 + (feature.intensity || 0) * 0.3,
-      weight: 1.2,
-    }).addTo(group);
-  });
-};
-
-const syncLayerVisibility = () => {
-  layerToggles.forEach((toggle) => {
-    const key = toggle.dataset.layer;
-    const group = featureLayerGroups[key];
-    if (!group) return;
-    if (toggle.checked) {
-      map.addLayer(group);
-    } else {
-      map.removeLayer(group);
-    }
-  });
-};
-
-const flashMapTip = (message) => {
-  if (!mapTipText) return;
-  const defaultText =
-    'Tap a marker to view burn intensity, debris flow likelihood, and suggested restoration actions.';
-  mapTipText.textContent = message;
-  setTimeout(() => {
-    mapTipText.textContent = defaultText;
-  }, 2800);
-};
-
-const renderLayers = (layers = {}) => {
-  Object.entries(featureLayerGroups).forEach(([key]) => {
-    renderLayerGroup(key, layers[key] || []);
-  });
-  syncLayerVisibility();
+const renderNextSteps = (steps = []) => {
+  if (!els.nextSteps) return;
+  if (!steps.length) {
+    els.nextSteps.innerHTML = `
+      <h3>Next steps</h3>
+      <p class="muted small">Adjust the sliders to generate an action plan.</p>
+    `;
+    return;
+  }
+  const items = steps.map((step) => `<li>${step}</li>`).join('');
+  els.nextSteps.innerHTML = `
+    <h3>Next steps</h3>
+    <ul>${items}</ul>
+  `;
 };
 
 const updateStats = (stats = {}) => {
-  if (confidenceText && typeof stats.confidence === 'number') {
-    confidenceText.textContent = `${Math.round(stats.confidence * 100)}%`;
+  if (els.confidence && typeof stats.confidence === 'number') {
+    els.confidence.textContent = `${Math.round(stats.confidence * 100)}%`;
   }
-  if (incidentsText && typeof stats.incidents === 'number') {
-    incidentsText.textContent = `${stats.incidents} alerts`;
+  if (els.incidents && typeof stats.incidents === 'number') {
+    els.incidents.textContent = `${stats.incidents} alerts`;
   }
-  if (locationText && stats.updated) {
-    locationText.textContent = stats.updated;
+  if (els.fireMeta && stats.updated && stats.acres) {
+    els.fireMeta.textContent = `${stats.updated} · ${formatNumber(stats.acres)} acres`;
   }
 };
 
-const mergeWithFallback = (payload) => {
-  const fallback = FALLBACK_SCENARIOS[payload?.roleKey || state.role] || FALLBACK_SCENARIOS['home-buyer'];
+const updateMapTip = (text) => {
+  if (els.mapTip && text) {
+    els.mapTip.textContent = text;
+  }
+};
+
+const updateHeader = (fire = {}, timeline = {}) => {
+  if (els.fireTitle) {
+    els.fireTitle.textContent = `${fire.name || 'Selected fire'} · ${fire.state || ''}`;
+  }
+  if (els.mapHeadline) {
+    els.mapHeadline.textContent = `${fire.name || 'Fire'} segmentation ready`;
+  }
+  if (els.mapSubhead && timeline?.label) {
+    els.mapSubhead.textContent = timeline.label;
+  }
+};
+
+const randomInsights = (fire, timeline) => [
+  {
+    category: 'Action',
+    title: 'Crew routing',
+    detail: `Assign crews to ${fire.region || 'priority sectors'} within the ${timeline.label || 'current'} window.`,
+  },
+  {
+    category: 'Monitoring',
+    title: 'Hydrology sensors',
+    detail: '4 gauges exceeded limits; refresh feeds every 15 minutes.',
+  },
+  {
+    category: 'Community',
+    title: 'Next briefing',
+    detail: 'Push narrated map to the public viewer with a short link.',
+  },
+];
+
+const randomSteps = (fire, priorities, timeline) => {
+  const focus = Object.entries(priorities).sort((a, b) => b[1] - a[1])[0]?.[0] || 'community';
+  const templates = {
+    community: [
+      `Pre-position structure protection teams near the ${fire.region || 'WUI fringe'}.`,
+      'Publish a plain-language alert that outlines open roads and shelters.',
+    ],
+    watershed: [
+      'Deploy BAER crews to mulch high-severity headwaters.',
+      'Stage sediment-control wattles upstream of drinking water intakes.',
+    ],
+    infrastructure: [
+      'Inspect transmission lines and primary transportation corridors.',
+      'Patch scorched culverts with quick-build materials.',
+    ],
+  };
+  const base = templates[focus];
+  base.push(`Refresh the ${timeline.label?.toLowerCase() || 'current'} briefing and send to local EOCs.`);
+  return base;
+};
+
+const buildMockScenario = () => {
+  const fire = fireCatalog.find((item) => item.id === state.fireId) || FALLBACK_FIRES[0];
+  const timeline = TIMELINE_STAGES[state.timeline] || TIMELINE_STAGES[2];
+  const priorities = { ...state.priorities };
+  const layers = {};
+  Object.keys(featureLayerGroups).forEach((key) => {
+    const baseColor = {
+      burnSeverity: '#ff4e1f',
+      watershedStress: '#33b5ff',
+      erosionRisk: '#d16cff',
+      infrastructureRisk: '#ffd262',
+    }[key];
+    layers[key] = Array.from({ length: 2 }).map(() => ({
+      coords: [jitter(fire.lat, 0.25), jitter(fire.lng, 0.25)],
+      radius: 10000 + Math.random() * 12000,
+      color: baseColor,
+      intensity: clamp(0.55 + Math.random() * 0.35, 0.2, 1),
+    }));
+  });
+
+  const stats = {
+    confidence: 0.9,
+    incidents: 6,
+    updated: `${fire.region || fire.state} · Updated ${Math.floor(Math.random() * 60) + 10} mins ago`,
+    acres: fire.acres,
+  };
+
   return {
-    ...fallback,
-    ...payload,
-    stats: { ...fallback.stats, ...(payload?.stats || {}) },
-    layers: { ...fallback.layers, ...(payload?.layers || {}) },
-    markers: payload?.markers?.length ? payload.markers : fallback.markers,
-    priorities: payload?.priorities?.length ? payload.priorities : fallback.priorities,
-    insights: payload?.insights?.length ? payload.insights : fallback.insights,
-    selectedFireId: payload?.selectedFireId || fallback.selectedFireId,
+    fire,
+    timeline,
+    layers,
+    markers: Array.from({ length: 3 }).map((_, idx) => ({
+      title: `Sector ${idx + 1}`,
+      details: 'Model hotspot preview based on MTBS-style segmentation.',
+      coords: [jitter(fire.lat, 0.3), jitter(fire.lng, 0.3)],
+    })),
+    priorities: Object.entries(priorities).map(([key, value]) => ({
+      label:
+        {
+          community: 'Community safety',
+          watershed: 'Watershed health',
+          infrastructure: 'Infrastructure readiness',
+        }[key] || key,
+      score: value,
+      summary:
+        {
+          community: 'Focus on structures and evacuation corridors.',
+          watershed: 'Stabilize slopes and drinking water sources.',
+          infrastructure: 'Keep roads, utilities, and communications online.',
+        }[key] || '',
+    })),
+    insights: randomInsights(fire, timeline),
+    nextSteps: randomSteps(fire, priorities, timeline),
+    stats,
+    mapTip: `${timeline.label} · ${timeline.description}`,
   };
 };
 
-const renderScenario = (scenario) => {
-  const { center, zoom, markers, layers, priorities, insights, stats, mapTip, roleKey, selectedFireId } = scenario;
-  if (Array.isArray(center) && typeof zoom === 'number') {
-    map.flyTo(center, zoom, { duration: 1 });
-  }
-  if (mapTipText && mapTip) {
-    mapTipText.textContent = mapTip;
-  }
-  if (selectedFireId) {
-    state.fireId = selectedFireId;
-  }
-  renderMarkers(markers);
-  renderLayers(layers);
-  renderPriorities(priorities);
-  renderInsights(insights);
-  updateStats(stats);
-  setChipActive(roleKey || state.role);
-};
-
-const fetchScenario = async (roleKey, horizon, fireId) => {
-  const params = new URLSearchParams({
-    role: roleKey,
-    horizon: String(horizon),
-  });
-  if (fireId) params.append('fireId', fireId);
-  const url = `${API_BASE_URL}/api/scenario?${params.toString()}`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+const fetchFireCatalog = async () => {
   try {
-    const response = await fetch(url, { signal: controller.signal });
-    if (!response.ok) throw new Error('Failed to fetch scenario');
+    const response = await fetch(`${API_BASE_URL}/api/fires`);
+    if (!response.ok) throw new Error('Failed to load fire catalog');
     const data = await response.json();
-    return data;
+    if (Array.isArray(data.fires) && data.fires.length) {
+      fireCatalog = data.fires.map((fire) => ({
+        ...fire,
+        year: fire.startDate ? new Date(fire.startDate).getFullYear() : undefined,
+      }));
+      if (!fireCatalog.find((fire) => fire.id === state.fireId)) {
+        state.fireId = fireCatalog[0].id;
+      }
+    }
   } catch (error) {
-    console.warn('Falling back to static scenario', error);
-    return FALLBACK_SCENARIOS[roleKey] || FALLBACK_SCENARIOS['home-buyer'];
+    console.warn('Using fallback fire catalog', error);
+    fireCatalog = [...FALLBACK_FIRES];
   } finally {
-    clearTimeout(timeout);
+    renderFireList(fireCatalog);
+    renderFirePins(fireCatalog);
   }
 };
 
-const loadScenario = async (roleKey = state.role, horizon = state.horizon, fireId = state.fireId) => {
-  state.role = roleKey;
-  state.horizon = horizon;
-  if (slider) {
-    slider.value = horizon;
-    updateSliderValue();
+const fetchScenario = async () => {
+  const params = new URLSearchParams({
+    fireId: state.fireId,
+    timeline: state.timeline,
+    priorityCommunity: state.priorities.community,
+    priorityWatershed: state.priorities.watershed,
+    priorityInfrastructure: state.priorities.infrastructure,
+  });
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/api/scenario?${params.toString()}`);
+    if (!response.ok) throw new Error('Scenario request failed');
+    return await response.json();
+  } catch (error) {
+    console.warn('Falling back to mock scenario', error);
+    return buildMockScenario();
   }
-  const payload = await fetchScenario(roleKey, horizon, fireId);
-  const scenario = mergeWithFallback(payload);
+};
+
+const renderScenario = (scenario) => {
+  if (!scenario) return;
+  renderLayers(scenario.layers);
+  renderHotspots(scenario.markers);
+  renderPriorities(scenario.priorities);
+  renderInsights(scenario.insights);
+  renderNextSteps(scenario.nextSteps);
+  updateStats(scenario.stats);
+  updateMapTip(scenario.mapTip);
+  updateHeader(scenario.fire, scenario.timeline);
+  if (scenario.fire?.center) {
+    map.flyTo(scenario.fire.center, 9, { duration: 1 });
+  } else if (scenario.fire?.lat && scenario.fire?.lng) {
+    map.flyTo([scenario.fire.lat, scenario.fire.lng], 9, { duration: 1 });
+  }
+  syncLayerVisibility();
+};
+
+const loadScenario = async () => {
+  updateForecastLabels();
+  setPriorityDisplays();
+  const scenario = await fetchScenario();
   renderScenario(scenario);
 };
 
-if (slider) {
-  slider.addEventListener('input', (event) => {
-    const value = Number(event.target.value);
-    updateSliderValue();
+// Event listeners
+if (els.prioritySliders) {
+  const debouncedScenario = debounce(loadScenario, 400);
+  els.prioritySliders.forEach((slider) => {
+    slider.addEventListener('input', (event) => {
+      const key = event.target.dataset.prioritySlider;
+      if (!key) return;
+      state.priorities[key] = Number(event.target.value);
+      setPriorityDisplays();
+      debouncedScenario();
+    });
   });
-  slider.addEventListener('change', (event) => {
-    const value = Number(event.target.value);
-    loadScenario(state.role, value, state.fireId);
-  });
-  updateSliderValue();
 }
 
-chips.forEach((chip) => {
-  chip.addEventListener('click', () => {
-    const roleKey = chip.dataset.role || 'home-buyer';
-    setChipActive(roleKey);
-    // When switching personas, let the backend pick a sensible default fire.
-    state.fireId = null;
-    loadScenario(roleKey, state.horizon, state.fireId);
+if (els.forecastSlider) {
+  els.forecastSlider.addEventListener('input', (event) => {
+    state.timeline = Number(event.target.value);
+    updateForecastLabels();
   });
-});
+  els.forecastSlider.addEventListener('change', () => {
+    loadScenario();
+  });
+}
 
-layerToggles.forEach((toggle) => {
+els.layerToggles.forEach((toggle) => {
   toggle.addEventListener('change', () => {
     syncLayerVisibility();
     const label = toggle.nextElementSibling?.textContent?.trim() || 'Layer';
     const stateText = toggle.checked ? 'enabled' : 'disabled';
-    flashMapTip(`${label} layer ${stateText}. Tap the map to inspect updates.`);
+    if (els.mapTip) {
+      const defaultText =
+        'Tap a fire pin to load MTBS-style burn severity overlays, then drag the sliders to test scenarios.';
+      els.mapTip.textContent = `${label} layer ${stateText}. ${defaultText}`;
+    }
   });
 });
 
-loadScenario();
+// ─────────────────────────────────────────────────────────────────────────────
+// Tooltip system
+// ─────────────────────────────────────────────────────────────────────────────
+const tooltipBox = document.querySelector('[data-tooltip-box]');
+const tooltipElements = document.querySelectorAll('[data-tooltip]');
+
+tooltipElements.forEach((el) => {
+  el.addEventListener('mouseenter', (e) => {
+    const text = el.dataset.tooltip;
+    if (!text || !tooltipBox) return;
+    tooltipBox.textContent = text;
+    tooltipBox.style.display = 'block';
+    positionTooltip(e);
+  });
+
+  el.addEventListener('mousemove', (e) => {
+    positionTooltip(e);
+  });
+
+  el.addEventListener('mouseleave', () => {
+    if (tooltipBox) tooltipBox.style.display = 'none';
+  });
+});
+
+function positionTooltip(e) {
+  if (!tooltipBox) return;
+  const offsetX = 16;
+  const offsetY = 16;
+  const x = e.clientX + offsetX;
+  const y = e.clientY + offsetY;
+  tooltipBox.style.left = `${x}px`;
+  tooltipBox.style.top = `${y}px`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LLM Q&A system
+// ─────────────────────────────────────────────────────────────────────────────
+const qnaInput = document.querySelector('[data-qna-input]');
+const qnaSubmit = document.querySelector('[data-qna-submit]');
+const qnaResponse = document.querySelector('[data-qna-response]');
+
+if (qnaInput && qnaSubmit && qnaResponse) {
+  qnaSubmit.addEventListener('click', async () => {
+    const question = qnaInput.value.trim();
+    if (!question) {
+      qnaResponse.innerHTML = '<p class="muted small">Please type a question first.</p>';
+      return;
+    }
+
+    qnaResponse.classList.add('loading');
+    qnaResponse.textContent = 'Generating answer...';
+
+    try {
+      const params = new URLSearchParams({
+        fireId: state.fireId || 'camp-fire-2018',
+        question,
+      });
+      const response = await fetch(`${API_BASE_URL}/api/ask?${params.toString()}`);
+      if (!response.ok) throw new Error('Failed to fetch answer');
+      const data = await response.json();
+      
+      qnaResponse.classList.remove('loading');
+      qnaResponse.innerHTML = `<p><strong>Q:</strong> ${question}</p><p>${data.answer || 'No answer available.'}</p>`;
+    } catch (error) {
+      console.warn('Q&A fetch failed:', error);
+      qnaResponse.classList.remove('loading');
+      qnaResponse.innerHTML = `<p class="muted small">Could not generate an answer. Try rephrasing your question or check your connection.</p>`;
+    }
+  });
+
+  qnaInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      qnaSubmit.click();
+    }
+  });
+}
+
+fetchFireCatalog().then(loadScenario);

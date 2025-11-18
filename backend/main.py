@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import random
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Dict, List
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 
-app = FastAPI(title="TerraNova Demo API", version="0.1.0")
+app = FastAPI(title="TerraNova Demo API", version="0.2.0")
 
 app.add_middleware(
   CORSMiddleware,
@@ -18,310 +18,332 @@ app.add_middleware(
 )
 
 
-ROLE_PROFILES: Dict[str, Dict] = {
-  "home-buyer": {
-    "label": "Home buyer",
-    "location": "Feather River Canyon",
-    "center": [39.54, -121.48],
-    "zoom": 9,
-    "chip_center": [39.54, -121.48],
-    "markers": [
-      {
-        "title": "Feather River Canyon",
-        "details": "High burn severity. Prioritize culvert clearing and hydrophobic soil treatment.",
-        "coords": [39.54, -121.48],
-      },
-      {
-        "title": "Mosquito Ridge",
-        "details": "Roadside slopes losing cohesion. Deploy wattles and monitor slope stability.",
-        "coords": [39.26, -120.97],
-      },
-    ],
-    "layer_seeds": {
-      "burnSeverity": [
-        {"coords": [39.3, -121.2], "radius": 22000, "color": "#ff4e1f"},
-        {"coords": [39.6, -121.0], "radius": 15000, "color": "#ff9b2f"},
-      ],
-      "floodRisk": [
-        {"coords": [39.1, -121.4], "radius": 26000, "color": "#33b5ff"},
-        {"coords": [39.55, -121.65], "radius": 18000, "color": "#1f7bdc"},
-      ],
-      "erosionRisk": [
-        {"coords": [39.4, -120.9], "radius": 19000, "color": "#d16cff"},
-      ],
-      "soilStability": [
-        {"coords": [39.5, -121.2], "radius": 24000, "color": "#93c47d"},
-      ],
-    },
-    "priority_weights": {
-      "Rebuild risk protection": 0.95,
-      "Flood risk protection": 0.75,
-      "Habitat stability": 0.45,
-      "Infrastructure": 0.65,
-    },
-    "insight_pool": [
-      ("Action", "Deploy wattles on Mosquito Ridge Rd.", "High debris risk · due 12 hrs"),
-      ("Monitoring", "Stream gauges synced · 4 anomalies", "Sent to hydrology team"),
-      ("Community", "Town hall briefing ready", "Shareable guest link active"),
-      ("Action", "Inspect culverts near Yankee Jims Rd.", "Post-storm inspection route drafted"),
-    ],
+FIRE_CATALOG: List[Dict] = [
+  {
+    "id": "camp-fire-2018",
+    "name": "Camp Fire",
+    "state": "CA",
+    "lat": 39.73,
+    "lng": -121.6,
+    "acres": 153_336,
+    "start_date": "2018-11-08",
+    "cause": "Electrical",
+    "summary": "Largest loss of life in CA wildfire history; Paradise community heavily impacted.",
+    "perimeter_radius": 25000,
+    "region": "Paradise & Magalia",
   },
-  "land-manager": {
-    "label": "Land manager",
-    "location": "South Lake Tahoe Rim",
-    "center": [38.95, -120.11],
-    "zoom": 9,
-    "chip_center": [38.95, -120.11],
-    "markers": [
-      {
-        "title": "South Lake Tahoe Rim",
-        "details": "Moderate burn zone. Focus on debris flow barriers and reseeding native grasses.",
-        "coords": [38.95, -120.11],
-      },
-      {
-        "title": "Echo Summit",
-        "details": "Granite faces shedding rockfall when saturated. Stage mesh netting.",
-        "coords": [38.82, -120.04],
-      },
-    ],
-    "layer_seeds": {
-      "burnSeverity": [
-        {"coords": [38.9, -120.3], "radius": 20000, "color": "#ff4e1f"},
-        {"coords": [39.05, -119.9], "radius": 14000, "color": "#ff9b2f"},
-      ],
-      "floodRisk": [
-        {"coords": [38.85, -120.15], "radius": 24000, "color": "#33b5ff"},
-      ],
-      "erosionRisk": [
-        {"coords": [38.78, -120.05], "radius": 15000, "color": "#d16cff"},
-        {"coords": [38.93, -120.22], "radius": 13000, "color": "#d16cff"},
-      ],
-      "soilStability": [
-        {"coords": [38.96, -120.05], "radius": 21000, "color": "#93c47d"},
-      ],
-    },
-    "priority_weights": {
-      "Rebuild risk protection": 0.65,
-      "Flood risk protection": 0.7,
-      "Habitat stability": 0.9,
-      "Infrastructure": 0.6,
-    },
-    "insight_pool": [
-      ("Action", "Stage mulching crews near Fallen Leaf Lake", "Scarp erosion accelerating"),
-      ("Monitoring", "Drone pass confirmed regrowth plots", "NDVI improving +6%"),
-      ("Community", "Brief tribal partners on reseeding plan", "Meeting scheduled 08:00 PST"),
-      ("Action", "Coordinate BAER crews with CAL FIRE", "Stabilize ridgelines before storm"),
-    ],
+  {
+    "id": "dixie-fire-2021",
+    "name": "Dixie Fire",
+    "state": "CA",
+    "lat": 40.18,
+    "lng": -121.23,
+    "acres": 963_309,
+    "start_date": "2021-07-13",
+    "cause": "Powerline",
+    "summary": "Second-largest CA wildfire; complex terrain through Plumas and Lassen counties.",
+    "perimeter_radius": 36000,
+    "region": "Feather River Watershed",
   },
-  "county-planner": {
-    "label": "County planner",
-    "location": "Shasta foothills",
-    "center": [40.38, -122.15],
-    "zoom": 8,
-    "chip_center": [40.38, -122.15],
-    "markers": [
-      {
-        "title": "Shasta foothills",
-        "details": "Critical habitat overlap. Align BAER crews with CAL FIRE task force.",
-        "coords": [40.38, -122.15],
-      },
-      {
-        "title": "Trinity Corridor",
-        "details": "Debris basins at 68% capacity. Plan mechanical clearing.",
-        "coords": [40.7, -122.9],
-      },
-    ],
-    "layer_seeds": {
-      "burnSeverity": [
-        {"coords": [40.2, -122.3], "radius": 26000, "color": "#ff4e1f"},
-      ],
-      "floodRisk": [
-        {"coords": [40.4, -122.0], "radius": 28000, "color": "#33b5ff"},
-        {"coords": [40.55, -122.45], "radius": 20000, "color": "#1f7bdc"},
-      ],
-      "erosionRisk": [
-        {"coords": [40.1, -121.8], "radius": 21000, "color": "#d16cff"},
-      ],
-      "soilStability": [
-        {"coords": [40.45, -122.25], "radius": 25000, "color": "#93c47d"},
-      ],
-    },
-    "priority_weights": {
-      "Rebuild risk protection": 0.7,
-      "Flood risk protection": 0.8,
-      "Habitat stability": 0.6,
-      "Infrastructure": 0.9,
-    },
-    "insight_pool": [
-      ("Action", "Fast-track culvert permits in Happy Valley", "Permit queue trimmed to 4 hrs"),
-      ("Monitoring", "Telemetry: 7 pump stations at alert", "Dispatch crews before 22:00"),
-      ("Community", "County briefing deck synced to portal", "Share with Board of Sups"),
-      ("Action", "Update evacuation trigger zones", "Model shift accounts for debris flow"),
-    ],
+  {
+    "id": "bootleg-fire-2021",
+    "name": "Bootleg Fire",
+    "state": "OR",
+    "lat": 42.56,
+    "lng": -121.5,
+    "acres": 413_765,
+    "start_date": "2021-07-06",
+    "cause": "Lightning",
+    "summary": "Major fire in southern Oregon; threatened critical transmission corridors.",
+    "perimeter_radius": 28000,
+    "region": "Fremont-Winema NF",
   },
-}
+  {
+    "id": "maui-fire-2023",
+    "name": "Lahaina Wildfire",
+    "state": "HI",
+    "lat": 20.88,
+    "lng": -156.68,
+    "acres": 6_700,
+    "start_date": "2023-08-08",
+    "cause": "Under investigation",
+    "summary": "Urban-interface fire on Maui with catastrophic impacts to Lahaina town.",
+    "perimeter_radius": 12000,
+    "region": "West Maui",
+  },
+]
+
+FIRE_LOOKUP: Dict[str, Dict] = {fire["id"]: fire for fire in FIRE_CATALOG}
+
+TIMELINE_STAGES = [
+  {"value": 0, "label": "Pre-fire baseline", "description": "Vegetation health before ignition", "days_from_ignition": -30},
+  {"value": 1, "label": "Active response (Day 0)", "description": "Fire perimeter with live suppression actions", "days_from_ignition": 0},
+  {"value": 2, "label": "Initial assessment (Day 7)", "description": "First MTBS-inspired burn severity mapping", "days_from_ignition": 7},
+  {"value": 3, "label": "Stabilization phase (Day 30)", "description": "Treatment crews in the field; erosion control active", "days_from_ignition": 30},
+  {"value": 4, "label": "Recovery outlook (Year 1)", "description": "Predicted vegetation recovery and infrastructure repairs", "days_from_ignition": 365},
+]
 
 
 def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
   return max(low, min(high, value))
 
 
-def random_pct(base: float, variance: float = 0.08) -> float:
-  return clamp(base + random.uniform(-variance, variance))
+def pick_fire(fire_id: str | None) -> Dict:
+  if fire_id and fire_id in FIRE_LOOKUP:
+    return FIRE_LOOKUP[fire_id]
+  return FIRE_CATALOG[0]
 
 
-def generate_priorities(role_key: str, horizon: int) -> List[Dict]:
-  weights = ROLE_PROFILES[role_key]["priority_weights"]
-  priorities = []
-  horizon_factor = (horizon - 3) / 14  # subtle adjustment
-  for label, weight in weights.items():
-    base = random_pct(weight, 0.07)
-    adjusted = clamp(base + horizon_factor * (0.5 - weight))
-    priorities.append({
-      "label": label,
-      "score": round(adjusted * 100),
-    })
-  priorities.sort(key=lambda item: item["score"], reverse=True)
-  return priorities
+def parse_priority(value: float | None, fallback: float) -> float:
+  if value is None:
+    value = fallback
+  return clamp(float(value) / 100.0, 0.05, 1.0)
 
 
-def jitter_coords(lat: float, lng: float, delta: float = 0.12) -> List[float]:
+def normalize_priorities(raw: Dict[str, float]) -> Dict[str, float]:
+  total = sum(raw.values())
+  if total == 0:
+    return {k: 1 / len(raw) for k in raw}
+  return {k: v / total for k, v in raw.items()}
+
+
+def jitter_coords(lat: float, lng: float, delta: float = 0.18) -> List[float]:
   return [
     round(lat + random.uniform(-delta, delta), 4),
     round(lng + random.uniform(-delta, delta), 4),
   ]
 
 
-def generate_markers(role_key: str) -> List[Dict]:
-  """Return jittered fire markers for a role, each with a stable fireId."""
-  markers: List[Dict] = []
-  for idx, marker in enumerate(ROLE_PROFILES[role_key]["markers"]):
-    coords = jitter_coords(marker["coords"][0], marker["coords"][1], delta=0.06)
-    details = marker["details"]
-    if random.random() < 0.4:
-      details += " Incoming storm cell raises priority."
-    fire_id = f"{role_key}-fire-{idx}"
-    markers.append({
-      "id": fire_id,
-      "title": marker["title"],
-      "details": details,
+def get_timeline_meta(stage: int) -> Dict:
+  idx = clamp(stage, 0, len(TIMELINE_STAGES) - 1)
+  return TIMELINE_STAGES[int(idx)]
+
+
+def generate_hotspots(fire: Dict) -> List[Dict]:
+  base_lat, base_lng = fire["lat"], fire["lng"]
+  hotspots = []
+  for idx in range(3):
+    coords = jitter_coords(base_lat, base_lng, delta=0.25)
+    hotspots.append({
+      "id": f"{fire['id']}-sector-{idx}",
+      "title": f"Sector {idx + 1}",
+      "details": random.choice([
+        "Watershed slopes showing hydrophobic soils.",
+        "Dense structure grid; ember threat remains.",
+        "Steep canyon with unstable ash covering.",
+        "Riparian corridor experiencing debris deposition.",
+      ]),
       "coords": coords,
     })
-  return markers
+  return hotspots
 
 
-def generate_layers(role_key: str, horizon: int, fire_coords: List[float] | None = None) -> Dict[str, List[Dict]]:
-  """
-  Generate synthetic layer clusters for the map.
+def generate_layers(fire: Dict, timeline_meta: Dict, priorities: Dict[str, float]) -> Dict[str, List[Dict]]:
+  stage_index = timeline_meta["value"]
+  decay = 1 - (stage_index / (len(TIMELINE_STAGES) - 1)) * 0.55
+  layers: Dict[str, List[Dict]] = {
+    "burnSeverity": [],
+    "watershedStress": [],
+    "erosionRisk": [],
+    "infrastructureRisk": [],
+  }
 
-  - fire_coords: when provided, clusters are biased around the selected fire.
-  - horizon: nudges radius/intensity to simulate predicted change over years.
-  """
-  layer_payload: Dict[str, List[Dict]] = {}
-  horizon_factor = clamp(horizon / 10.0, 0.1, 1.0)  # 1–10 yrs → 0.1–1.0
+  color_map = {
+    "burnSeverity": "#ff4e1f",
+    "watershedStress": "#33b5ff",
+    "erosionRisk": "#d16cff",
+    "infrastructureRisk": "#ffd262",
+  }
 
-  for layer_key, features in ROLE_PROFILES[role_key]["layer_seeds"].items():
-    layer_payload[layer_key] = []
-    for feat in features:
-      base_lat, base_lng = feat["coords"]
+  base_radius = fire["perimeter_radius"]
+  center_lat, center_lng = fire["lat"], fire["lng"]
 
-      if fire_coords:
-        # Blend original seed with fire center so clusters follow the selected fire.
-        base_lat = (base_lat + fire_coords[0]) / 2.0
-        base_lng = (base_lng + fire_coords[1]) / 2.0
+  for layer_key in layers.keys():
+    weight = priorities.get({
+      "burnSeverity": "community",
+      "watershedStress": "watershed",
+      "erosionRisk": "watershed",
+      "infrastructureRisk": "infrastructure",
+    }[layer_key], 0.25)
 
-      coords = jitter_coords(base_lat, base_lng, delta=0.18)
-
-      # Horizon stretches footprint slightly and decays intensity to mimic recovery.
-      radius_scale = 0.85 + horizon_factor * 0.4  # ~0.9x at 1 yr → ~1.25x at 10 yrs
-      radius = int(feat["radius"] * radius_scale * random.uniform(0.9, 1.15))
-
-      base_intensity = random.uniform(0.55, 0.98)
-      recovery_rate = 0.4  # how fast severity eases with horizon
-      intensity = clamp(base_intensity * (1.0 - recovery_rate * (horizon_factor - 0.1)))
-
-      layer_payload[layer_key].append({
+    for _ in range(2):
+      coords = jitter_coords(center_lat, center_lng, delta=0.22)
+      radius = int(base_radius * (0.6 + weight * 0.8) * decay * random.uniform(0.8, 1.2))
+      intensity = clamp((0.55 + weight * 0.5) * decay + random.uniform(-0.08, 0.08))
+      layers[layer_key].append({
         "coords": coords,
-        "radius": radius,
-        "color": feat["color"],
+        "radius": max(8000, radius),
+        "color": color_map[layer_key],
         "intensity": round(intensity, 2),
       })
 
-  return layer_payload
+  return layers
 
 
-def generate_insights(role_key: str) -> List[Dict]:
-  pool = ROLE_PROFILES[role_key]["insight_pool"]
-  picks = random.sample(pool, k=min(3, len(pool)))
-  insights = []
-  for insight_type, title, detail in picks:
-    if "due" in detail and random.random() < 0.5:
-      hours = random.randint(6, 18)
-      detail = f"Due in {hours} hrs · auto-routed"
-    insights.append({
-      "category": insight_type,
-      "title": title,
-      "detail": detail,
+def summarize_priorities(priorities: Dict[str, float]) -> List[Dict]:
+  labels = {
+    "community": "Community safety",
+    "watershed": "Watershed health",
+    "infrastructure": "Infrastructure readiness",
+  }
+  summaries = {
+    "community": "Focus on structure protection and WUI buffers.",
+    "watershed": "Stabilize slopes and protect drinking water sheds.",
+    "infrastructure": "Keep roads, utilities, and comms online.",
+  }
+  result = []
+  for key, value in priorities.items():
+    result.append({
+      "label": labels[key],
+      "score": round(value * 100),
+      "summary": summaries[key],
     })
-  return insights
+  result.sort(key=lambda item: item["score"], reverse=True)
+  return result
 
 
-def format_update_message(location: str) -> str:
-  minutes = random.randint(30, 120)
-  return f"{location} · Updated {minutes} mins ago"
+def generate_next_steps(fire: Dict, priorities: Dict[str, float], timeline_meta: Dict) -> List[str]:
+  top_priority = max(priorities, key=priorities.get)
+  steps = []
+  if top_priority == "community":
+    steps.append(f"Pre-position structure protection crews along the {fire['region']} fringe.")
+    steps.append("Activate text alerts that explain road closures in plain language.")
+  elif top_priority == "watershed":
+    steps.append("Deploy BAER teams to seed and mulch high-severity headwaters.")
+    steps.append("Stage portable sediment traps to guard downstream intakes.")
+  else:
+    steps.append("Inspect primary transmission corridors and backup fiber routes.")
+    steps.append("Schedule quick-build repairs for scorched culverts and bridges.")
+
+  steps.append(f"Update the {timeline_meta['label'].lower()} briefing and push to local EOCs.")
+  return steps
+
+
+def generate_insights(fire: Dict, timeline_meta: Dict) -> List[Dict]:
+  return [
+    {
+      "category": "Action",
+      "title": "Crew routing",
+      "detail": f"Assign crews to {fire['region']} ridge within {timeline_meta['label'].split()[0]} window.",
+    },
+    {
+      "category": "Monitoring",
+      "title": "Hydrology sensors",
+      "detail": "4 gauges tripped thresholds; auto-sync data every 15 minutes.",
+    },
+    {
+      "category": "Community",
+      "title": "Next briefing",
+      "detail": "Upload narrated map to public viewer and share short link.",
+    },
+  ]
+
+
+def format_stats(fire: Dict) -> Dict:
+  confidence = round(random.uniform(0.82, 0.97), 2)
+  incidents = random.randint(3, 8)
+  updated = f"{fire['region']} · Updated {random.randint(15, 80)} mins ago"
+  return {
+    "confidence": confidence,
+    "incidents": incidents,
+    "updated": updated,
+    "acres": fire["acres"],
+  }
+
+
+@app.get("/api/fires")
+async def list_fires():
+  return {"fires": FIRE_CATALOG}
 
 
 @app.get("/api/scenario")
 async def get_scenario(
-  role: str = Query("home-buyer"),
-  horizon: int = Query(3, ge=1, le=10),
-  fireId: str | None = Query(None, description="Optional fire identifier to focus the optimization around"),
+  fireId: str | None = Query(None, description="Fire identifier"),
+  timeline: int = Query(2, ge=0, le=4),
+  priorityCommunity: int = Query(70, ge=0, le=100),
+  priorityWatershed: int = Query(55, ge=0, le=100),
+  priorityInfrastructure: int = Query(60, ge=0, le=100),
 ):
-  role_key = role.lower().replace(" ", "-")
-  if role_key not in ROLE_PROFILES:
-    role_key = "home-buyer"
+  fire = pick_fire(fireId)
+  timeline_meta = get_timeline_meta(timeline)
 
-  profile = ROLE_PROFILES[role_key]
-  priorities = generate_priorities(role_key, horizon)
-  markers = generate_markers(role_key)
-  selected_fire_id = fireId
-  fire_coords = None
+  raw_priorities = {
+    "community": parse_priority(priorityCommunity, 70),
+    "watershed": parse_priority(priorityWatershed, 55),
+    "infrastructure": parse_priority(priorityInfrastructure, 60),
+  }
+  normalized_priorities = normalize_priorities(raw_priorities)
 
-  if not selected_fire_id and markers:
-    selected_fire_id = markers[0]["id"]
-
-  if selected_fire_id:
-    for marker in markers:
-      if marker["id"] == selected_fire_id:
-        fire_coords = marker["coords"]
-        break
-
-  layers = generate_layers(role_key, horizon, fire_coords)
-  insights = generate_insights(role_key)
-
-  confidence = round(random.uniform(0.85, 0.97), 2)
-  incidents = random.randint(5, 9)
+  layers = generate_layers(fire, timeline_meta, normalized_priorities)
+  priorities_summary = summarize_priorities(normalized_priorities)
+  hotspots = generate_hotspots(fire)
+  next_steps = generate_next_steps(fire, normalized_priorities, timeline_meta)
+  insights = generate_insights(fire, timeline_meta)
+  stats = format_stats(fire)
 
   response = {
-    "role": profile["label"],
-    "roleKey": role_key,
-    "selectedFireId": selected_fire_id,
-    "center": profile["center"],
-    "zoom": profile["zoom"],
-    "chipCenter": profile["chip_center"],
-    "stats": {
-      "confidence": confidence,
-      "incidents": incidents,
-      "updated": format_update_message(profile["location"]),
+    "fire": {
+      "id": fire["id"],
+      "name": fire["name"],
+      "state": fire["state"],
+      "region": fire["region"],
+      "summary": fire["summary"],
+      "acres": fire["acres"],
+      "startDate": fire["start_date"],
+      "cause": fire["cause"],
+      "center": [fire["lat"], fire["lng"]],
     },
-    "markers": markers,
+    "timeline": timeline_meta,
+    "stats": stats,
     "layers": layers,
-    "priorities": priorities,
+    "markers": hotspots,
+    "priorities": priorities_summary,
+    "nextSteps": next_steps,
     "insights": insights,
-    "mapTip": "Tap a marker to inspect burn intensity, debris flow likelihood, and recommended actions.",
+    "mapTip": f"{timeline_meta['label']} · {timeline_meta['description']}",
     "generatedAt": datetime.now(timezone.utc).isoformat(),
   }
   return response
+
+
+@app.get("/api/ask")
+async def ask_about_fire(fireId: str = Query("camp-fire-2018"), question: str = Query("")):
+  """
+  Simple LLM-style Q&A endpoint that returns plain-language fire summaries.
+  In production, replace this with actual LLM calls (OpenAI, Anthropic, etc.).
+  """
+  fire_info = next((f for f in FIRE_CATALOG if f["id"] == fireId), FIRE_CATALOG[0])
+  
+  # Template-based responses for common questions
+  question_lower = question.lower()
+  
+  if "cause" in question_lower or "start" in question_lower or "ignit" in question_lower:
+    answer = f"The {fire_info['name']} started on {fire_info['startDate']} in {fire_info['region']}, {fire_info['state']}. The cause was determined to be {fire_info['cause'].lower()}."
+  
+  elif "damage" in question_lower or "severe" in question_lower or "impact" in question_lower:
+    answer = f"The {fire_info['name']} burned approximately {fire_info['acres']:,} acres. {fire_info['summary']} Our burn severity model classifies the area into high, moderate, and low severity zones to help prioritize recovery efforts."
+  
+  elif "when" in question_lower or "date" in question_lower:
+    answer = f"The {fire_info['name']} ignited on {fire_info['startDate']}. The initial MTBS-style assessment typically occurs within 7 days of ignition, with follow-up mapping at 30 days and long-term recovery tracking extending to 1-5 years."
+  
+  elif "where" in question_lower or "location" in question_lower:
+    answer = f"The {fire_info['name']} occurred in {fire_info['region']}, {fire_info['state']}. You can see the exact location on the map above, with burn severity overlays showing the spatial extent of damage."
+  
+  elif "recovery" in question_lower or "rehab" in question_lower or "restoration" in question_lower:
+    answer = f"Recovery from the {fire_info['name']} is ongoing. Our model tracks burn severity changes over time, helping land managers prioritize watershed stabilization, erosion control, and vegetation reseeding. Adjust the forecast slider to see predicted recovery at different time horizons."
+  
+  elif "model" in question_lower or "algorithm" in question_lower or "how" in question_lower:
+    answer = f"Our burn severity segmentation model analyzes Landsat imagery to classify each 30m pixel as unburned, low, moderate, or high severity. The model was trained on MTBS reference data and uses spectral indices (NDVI, NBR) to detect vegetation loss. The priority sliders let you weight community safety, watershed health, and infrastructure concerns to customize the analysis."
+  
+  else:
+    answer = f"The {fire_info['name']} burned {fire_info['acres']:,} acres in {fire_info['region']}, {fire_info['state']}, starting {fire_info['startDate']}. Cause: {fire_info['cause']}. {fire_info['summary']} Use the map controls to explore burn severity layers, adjust priorities, and see how conditions change over time. Ask more specific questions about the fire's cause, damage, location, recovery, or our modeling approach."
+  
+  return {
+    "fireId": fireId,
+    "question": question,
+    "answer": answer,
+    "generatedAt": datetime.now(timezone.utc).isoformat(),
+  }
 
 
 @app.get("/api/health")

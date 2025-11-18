@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Recovery Intelligence Map | TerraNova</title>
+    <title>Burn Severity Explorer | TerraNova</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -22,93 +22,173 @@
     <div class="map-shell">
       <aside class="control-panel">
         <div class="panel-header">
-          <p class="eyebrow">Recovery Intelligence</p>
-          <h1>Customize your analysis</h1>
-          <p class="location" data-location>Northern Sierra · Last updated 2 hrs ago</p>
+          <p class="eyebrow">Burn Severity Explorer</p>
+          <h1 data-fire-title>Camp Fire · CA</h1>
+          <p class="location" data-fire-meta>Paradise & Magalia · Updated moments ago</p>
         </div>
 
         <section class="panel-block">
-          <p class="block-label">I care about</p>
-          <div class="chip-list">
-            <button class="chip active" data-role="home-buyer" data-center="39.54,-121.48" data-zoom="9">Home buyer</button>
-            <button class="chip" data-role="land-manager" data-center="38.95,-120.11" data-zoom="9">Land manager</button>
-            <button class="chip" data-role="county-planner" data-center="40.38,-122.15" data-zoom="8">County planner</button>
+          <div class="block-header">
+            <p>Recent fires</p>
+            <span>Nationwide feed</span>
+          </div>
+          <div class="fire-list" data-fire-list>
+            <button class="fire-card active" data-fire-id="camp-fire-2018" data-tooltip="Click to load Camp Fire analysis with burn severity mapping, watershed stress, and infrastructure overlays.">
+              <div>
+                <strong>Camp Fire</strong>
+                <span>CA · 2018</span>
+              </div>
+              <span class="badge">153k ac</span>
+            </button>
+            <button class="fire-card" data-fire-id="dixie-fire-2021" data-tooltip="Click to load Dixie Fire analysis with burn severity mapping, watershed stress, and infrastructure overlays.">
+              <div>
+                <strong>Dixie Fire</strong>
+                <span>CA · 2021</span>
+              </div>
+              <span class="badge">963k ac</span>
+            </button>
           </div>
         </section>
 
         <section class="panel-block priorities">
           <div class="block-header">
-            <p>Your priorities</p>
-            <span>Editable</span>
+            <p>Analysis priorities</p>
+            <span>Adjust sliders</span>
+          </div>
+          <div class="priority-controls">
+            <label class="priority-slider" data-tooltip="Community safety: Higher values bias the model toward protecting neighborhoods, hospitals, schools, and evacuation routes.">
+              <div class="priority-meta">
+                <span>Community safety</span>
+                <span data-priority-value="community">70%</span>
+              </div>
+              <input type="range" min="0" max="100" value="70" data-priority-slider="community" />
+            </label>
+            <label class="priority-slider" data-tooltip="Watershed health: Higher values shift focus to headwaters, drinking water sources, and sediment control.">
+              <div class="priority-meta">
+                <span>Watershed health</span>
+                <span data-priority-value="watershed">55%</span>
+              </div>
+              <input type="range" min="0" max="100" value="55" data-priority-slider="watershed" />
+            </label>
+            <label class="priority-slider" data-tooltip="Infrastructure readiness: Higher values prioritize keeping roads, power, communications, and utilities online.">
+              <div class="priority-meta">
+                <span>Infrastructure readiness</span>
+                <span data-priority-value="infrastructure">60%</span>
+              </div>
+              <input type="range" min="0" max="100" value="60" data-priority-slider="infrastructure" />
+            </label>
           </div>
           <div class="priorities-list" data-priorities>
-            <p class="muted small">Loading priorities…</p>
+            <p class="muted small">Adjust a slider to see how the model changes course.</p>
           </div>
         </section>
 
         <section class="panel-block">
           <div class="block-header">
-            <p>Planning horizon</p>
-            <span>Years</span>
+            <p>Forecast stage</p>
+            <span data-forecast-label>Initial assessment (Day 7)</span>
           </div>
-          <div class="slider">
-            <input type="range" min="1" max="10" value="3" />
-            <div class="slider-value" data-slider-value>3 yrs</div>
+          <div class="slider timeline" data-tooltip="Drag to see how burn severity, watershed stress, and infrastructure exposure evolve from fire ignition through long-term recovery.">
+            <input type="range" min="0" max="4" value="2" data-forecast-slider />
+            <div class="slider-value" data-forecast-desc>First MTBS-inspired burn severity mapping</div>
           </div>
         </section>
 
         <section class="panel-block">
           <p class="block-label">Map layers</p>
-          <label class="layer">
-            <input type="checkbox" data-layer="burnSeverity" checked />
+          <label class="layer" data-tooltip="Burn severity: Pixel-level high/moderate/low/unburned classes derived from Landsat-style segmentation.">
+            <input
+              type="checkbox"
+              data-layer="burnSeverity"
+              checked
+            />
             <span>Burn severity</span>
           </label>
-          <label class="layer">
-            <input type="checkbox" data-layer="floodRisk" checked />
-            <span>Flood risk</span>
+          <label class="layer" data-tooltip="Watershed stress: Headwaters and drainage basins where ash, debris, and runoff pressure water systems.">
+            <input
+              type="checkbox"
+              data-layer="watershedStress"
+              checked
+            />
+            <span>Watershed stress</span>
           </label>
-          <label class="layer">
-            <input type="checkbox" data-layer="erosionRisk" />
-            <span>Erosion/block risk</span>
+          <label class="layer" data-tooltip="Slope stability: Steep terrain likely to shed debris or trigger slides, especially after rain.">
+            <input
+              type="checkbox"
+              data-layer="erosionRisk"
+              checked
+            />
+            <span>Slope stability</span>
           </label>
-          <label class="layer">
-            <input type="checkbox" data-layer="soilStability" />
-            <span>USGS soil maps</span>
+          <label class="layer" data-tooltip="Infrastructure exposure: Roads, utilities, and communications corridors flagged as at-risk from fire or debris.">
+            <input
+              type="checkbox"
+              data-layer="infrastructureRisk"
+            />
+            <span>Infrastructure exposure</span>
           </label>
         </section>
 
         <section class="legend">
           <h2>Legend</h2>
-          <div class="legend-item"><span class="dot high"></span>High need</div>
-          <div class="legend-item"><span class="dot medium"></span>Moderate need</div>
-          <div class="legend-item"><span class="dot low"></span>Low need</div>
+          <div class="legend-item"><span class="dot high"></span>High priority</div>
+          <div class="legend-item"><span class="dot medium"></span>Moderate priority</div>
+          <div class="legend-item"><span class="dot low"></span>Low priority</div>
         </section>
       </aside>
 
       <section class="map-panel">
         <header class="map-header">
           <div>
-            <p class="eyebrow">Live storm cycle</p>
-            <h2>Forecast window: next 96 hours</h2>
+            <p class="eyebrow">Live burn severity model</p>
+            <h2 data-map-headline>Single fire analysis in focus</h2>
+            <p class="location" data-map-subhead>Initial assessment (Day 7)</p>
           </div>
           <div class="header-meta">
-            <div>
+            <div data-tooltip="Model confidence: Percentage of pixels classified with high certainty.">
               <p class="label">Confidence</p>
               <strong data-confidence>92%</strong>
             </div>
-            <div>
+            <div data-tooltip="Incidents: Number of hotspots or alerts flagged by the model in this fire's footprint.">
               <p class="label">Incidents</p>
               <strong data-incidents>7 alerts</strong>
             </div>
-            <button class="btn small ghost" onclick="window.location.href='login.html'">Share briefing</button>
+            <button
+              class="btn small ghost"
+              data-tooltip="Share briefing: Generate a read-only link to this analysis for stakeholders."
+              onclick="window.location.href='login.html'"
+            >
+              Share briefing
+            </button>
           </div>
         </header>
+        
         <div id="map"></div>
+        
         <div class="map-tip">
           <p data-map-tip>
-            Tap a marker to view burn intensity, debris flow likelihood, and suggested restoration actions.
+            Tap a fire pin to load MTBS-style burn severity overlays, then drag the sliders to test scenarios.
           </p>
         </div>
+
+        <section class="llm-qna">
+          <div class="qna-header">
+            <h3>Ask about this fire</h3>
+            <p class="muted small">Get a plain-language summary powered by AI</p>
+          </div>
+          <div class="qna-input-group">
+            <input 
+              type="text" 
+              placeholder="e.g., What caused this fire? How severe was the damage?"
+              data-qna-input
+            />
+            <button class="btn" data-qna-submit>Ask</button>
+          </div>
+          <div class="qna-response" data-qna-response>
+            <p class="muted small">Type a question and click "Ask" to get an AI-generated summary about the selected fire.</p>
+          </div>
+        </section>
+
         <div class="insight-rail" data-insights>
           <article>
             <p class="rail-label">Loading</p>
@@ -116,8 +196,15 @@
             <span>Powered by TerraNova demo API</span>
           </article>
         </div>
+        
+        <section class="next-steps" data-next-steps>
+          <h3>Next steps</h3>
+          <p class="muted small">Adjust the sliders to generate an action plan in plain language.</p>
+        </section>
       </section>
     </div>
+
+    <div class="tooltip" data-tooltip-box style="display: none;"></div>
 
     <script
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
