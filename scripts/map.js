@@ -76,7 +76,6 @@ const state = {
   selectedSuggestionIndex: -1,
   selectedState: null,
   selectedYear: null,
-  selectedMonth: null,
 };
 
 // Initialize year dropdown (1994-2025)
@@ -169,7 +168,6 @@ const els = {
   searchInput: document.querySelector('[data-search-input]'),
   autocompleteSuggestions: document.querySelector('[data-autocomplete-suggestions]'),
   yearSelect: document.querySelector('[data-year-select]'),
-  monthSelect: document.querySelector('[data-month-select]'),
   searchBtn: document.querySelector('[data-search-btn]'),
 };
 
@@ -210,6 +208,17 @@ const jitter = (value, delta) => value + (Math.random() * 2 - 1) * delta;
 
 const renderFireList = (fires) => {
   if (!els.fireList) return;
+  
+  // Show "no fires found" message if empty
+  if (!fires || fires.length === 0) {
+    els.fireList.innerHTML = `
+      <div class="no-fires-message">
+        <p>No fires found for your selection</p>
+      </div>
+    `;
+    return;
+  }
+  
   els.fireList.innerHTML = fires
     .map(
       (fire) => `
@@ -231,8 +240,10 @@ const renderFireList = (fires) => {
       const fireId = button.dataset.fireId;
       if (!fireId || fireId === state.fireId) return;
       state.fireId = fireId;
-      renderFireList(fireCatalog);
-      renderFirePins(fireCatalog);
+      // Re-render to update active state
+      renderFireList(fires);
+      renderFirePins(fires);
+      // Only clicking a fire updates the map
       loadScenario();
     });
   });
@@ -247,7 +258,8 @@ const renderFirePins = (fires) => {
     marker.bindPopup(`<strong>${fire.name}</strong><p>${fire.region || ''}</p>`);
     marker.on('click', () => {
       state.fireId = fire.id;
-      renderFireList(fireCatalog);
+      renderFireList(fires);
+      renderFirePins(fires);
       loadScenario();
     });
   });
@@ -484,27 +496,43 @@ const buildMockScenario = () => {
   };
 };
 
-const fetchFireCatalog = async () => {
+const fetchFireCatalog = async (filters = null) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/fires`);
+    let url = `${API_BASE_URL}/api/fires`;
+    const params = new URLSearchParams();
+    
+    if (filters) {
+      if (filters.state) {
+        params.append('state', filters.state);
+      }
+      if (filters.year) {
+        params.append('year', filters.year);
+      }
+    }
+    
+    if (params.toString()) {
+      url += `?${params.toString()}`;
+    }
+    
+    const response = await fetch(url);
     if (!response.ok) throw new Error('Failed to load fire catalog');
     const data = await response.json();
     if (Array.isArray(data.fires) && data.fires.length) {
       fireCatalog = data.fires.map((fire) => ({
         ...fire,
-        year: fire.startDate ? new Date(fire.startDate).getFullYear() : undefined,
+        year: fire.startDate ? new Date(fire.startDate).getFullYear() : 
+              (fire.start_date ? new Date(fire.start_date).getFullYear() : undefined),
       }));
-      if (!fireCatalog.find((fire) => fire.id === state.fireId)) {
-        state.fireId = fireCatalog[0].id;
-      }
+    } else {
+      fireCatalog = [];
     }
   } catch (error) {
     console.warn('Using fallback fire catalog', error);
     fireCatalog = [...FALLBACK_FIRES];
-  } finally {
-    renderFireList(fireCatalog);
-    renderFirePins(fireCatalog);
   }
+  
+  // Return the catalog - don't render here
+  return fireCatalog;
 };
 
 const fetchScenario = async () => {
@@ -739,9 +767,8 @@ const updateSearchButtonState = () => {
   
   const hasState = state.selectedState !== null;
   const hasYear = state.selectedYear !== null && state.selectedYear !== '';
-  const hasMonth = state.selectedMonth !== null && state.selectedMonth !== '';
   
-  if (hasState && hasYear && hasMonth) {
+  if (hasState && hasYear) {
     els.searchBtn.disabled = false;
   } else {
     els.searchBtn.disabled = true;
@@ -809,30 +836,111 @@ if (els.yearSelect) {
   });
 }
 
-if (els.monthSelect) {
-  els.monthSelect.addEventListener('change', (e) => {
-    state.selectedMonth = e.target.value;
-    updateSearchButtonState();
-  });
-}
-
 // Search button handler
 if (els.searchBtn) {
-  els.searchBtn.addEventListener('click', () => {
+  els.searchBtn.addEventListener('click', async () => {
     if (els.searchBtn.disabled) return;
     
-    console.log('Search clicked:', {
-      state: state.selectedState,
-      year: state.selectedYear,
-      month: state.selectedMonth
+    // Also check if user typed state code directly in input
+    let stateCode = state.selectedState;
+    if (!stateCode && els.searchInput?.value) {
+      const inputValue = els.searchInput.value.trim().toUpperCase();
+      // Check if it's a 2-letter state code
+      if (inputValue.length === 2) {
+        const foundState = US_STATES.find(s => s.code === inputValue);
+        if (foundState) {
+          stateCode = foundState.code;
+          state.selectedState = stateCode;
+        }
+      } else {
+        // Check if it matches a state name
+        const foundState = US_STATES.find(s => s.name.toUpperCase() === inputValue);
+        if (foundState) {
+          stateCode = foundState.code;
+          state.selectedState = stateCode;
+        }
+      }
+    }
+    
+    const filters = {
+      state: stateCode,
+      year: state.selectedYear ? parseInt(state.selectedYear) : null,
+    };
+    
+    // Fetch filtered fires
+    const filteredFires = await fetchFireCatalog(filters);
+    
+    // Sort filtered results by year descending (newest first)
+    const sortedFilteredFires = [...filteredFires].sort((a, b) => {
+      const getYear = (fire) => {
+        const dateStr = fire.start_date || fire.startDate || '';
+        if (dateStr) {
+          const year = parseInt(dateStr.split('-')[0]);
+          return isNaN(year) ? 0 : year;
+        }
+        return 0;
+      };
+      
+      const yearA = getYear(a);
+      const yearB = getYear(b);
+      
+      if (yearA === yearB) {
+        const dateA = a.start_date || a.startDate || '';
+        const dateB = b.start_date || b.startDate || '';
+        return dateB.localeCompare(dateA);
+      }
+      
+      return yearB - yearA; // Descending order (newest first)
     });
     
-    // TODO: Implement actual search/filter logic here
-    // This will filter fires based on selected state, year, and month
+    console.log('Filtered fires (sorted by year descending):', sortedFilteredFires.map(f => `${f.name} (${f.start_date || f.startDate})`));
+    
+    // Display filtered results (don't update map)
+    renderFireList(sortedFilteredFires);
+    renderFirePins(sortedFilteredFires);
   });
 }
 
 // Initialize year dropdown on page load
 initializeYearDropdown();
 
-fetchFireCatalog().then(loadScenario);
+// Load top 4 most recent fires by default (sorted by recency)
+fetchFireCatalog().then((allFires) => {
+  // Backend already sorts by date, but ensure we sort by year descending (newest first)
+  const sortedFires = [...allFires].sort((a, b) => {
+    // Extract year from date string (format: YYYY-MM-DD)
+    const getYear = (fire) => {
+      const dateStr = fire.start_date || fire.startDate || '';
+      if (dateStr) {
+        const year = parseInt(dateStr.split('-')[0]);
+        return isNaN(year) ? 0 : year;
+      }
+      return 0;
+    };
+    
+    const yearA = getYear(a);
+    const yearB = getYear(b);
+    
+    // If same year, sort by full date
+    if (yearA === yearB) {
+      const dateA = a.start_date || a.startDate || '';
+      const dateB = b.start_date || b.startDate || '';
+      return dateB.localeCompare(dateA); // Newest first
+    }
+    
+    // Sort by year descending (newest first)
+    return yearB - yearA;
+  });
+  
+  const top4Fires = sortedFires.slice(0, 4);
+  console.log('Top 4 fires (sorted by year descending):', top4Fires.map(f => `${f.name} (${f.start_date || f.startDate})`));
+  
+  renderFireList(top4Fires);
+  renderFirePins(top4Fires);
+  
+  // Load scenario for first fire (newest) if available
+  if (top4Fires.length > 0) {
+    state.fireId = top4Fires[0].id;
+    loadScenario();
+  }
+});

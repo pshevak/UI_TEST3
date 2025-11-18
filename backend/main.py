@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import random
 from datetime import datetime, timezone
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -88,7 +88,7 @@ def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
   return max(low, min(high, value))
 
 
-def pick_fire(fire_id: str | None) -> Dict:
+def pick_fire(fire_id: Optional[str]) -> Dict:
   if fire_id and fire_id in FIRE_LOOKUP:
     return FIRE_LOOKUP[fire_id]
   return FIRE_CATALOG[0]
@@ -252,13 +252,52 @@ def format_stats(fire: Dict) -> Dict:
 
 
 @app.get("/api/fires")
-async def list_fires():
-  return {"fires": FIRE_CATALOG}
+async def list_fires(
+  state: Optional[str] = Query(None, description="Filter by state code (e.g., CA, OR)"),
+  year: Optional[int] = Query(None, description="Filter by year"),
+):
+  """
+  Returns list of fires, optionally filtered by state and year.
+  Results are sorted by most recent first.
+  """
+  filtered_fires = FIRE_CATALOG.copy()
+  
+  # Apply filters
+  if state:
+    state_upper = state.upper().strip()
+    filtered_fires = [f for f in filtered_fires if f["state"].upper() == state_upper]
+  
+  if year:
+    filtered_fires = [
+      f for f in filtered_fires 
+      if f["start_date"] and int(f["start_date"].split("-")[0]) == year
+    ]
+  
+  # Sort by year descending (newest first), then by date within same year
+  def get_sort_key(fire: Dict) -> tuple:
+    date_str = fire.get("start_date", "") or ""
+    if date_str:
+      try:
+        # Extract year, month, day for proper sorting
+        parts = date_str.split("-")
+        if len(parts) >= 3:
+          year = int(parts[0])
+          month = int(parts[1])
+          day = int(parts[2])
+          # Return tuple for sorting: (-year, -month, -day) for descending order
+          return (-year, -month, -day)
+      except (ValueError, IndexError):
+        pass
+    return (0, 0, 0)  # Put fires without dates at the end
+  
+  sorted_fires = sorted(filtered_fires, key=get_sort_key)
+  
+  return {"fires": sorted_fires}
 
 
 @app.get("/api/scenario")
 async def get_scenario(
-  fireId: str | None = Query(None, description="Fire identifier"),
+  fireId: Optional[str] = Query(None, description="Fire identifier"),
   timeline: int = Query(2, ge=0, le=4),
   priorityCommunity: int = Query(70, ge=0, le=100),
   priorityWatershed: int = Query(55, ge=0, le=100),
