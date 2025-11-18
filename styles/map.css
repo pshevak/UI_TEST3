@@ -55,6 +55,14 @@ body {
   padding: clamp(20px, 4vw, 40px);
 }
 
+.muted {
+  color: var(--muted);
+}
+
+.small {
+  font-size: 0.85rem;
+}
+
 .control-panel {
   background: var(--panel);
   border-radius: 32px;
@@ -156,6 +164,7 @@ body {
 .slider input[type='range'] {
   width: 100%;
   -webkit-appearance: none;
+  appearance: none;
   height: 6px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.1);

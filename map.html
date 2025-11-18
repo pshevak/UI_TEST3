@@ -13,7 +13,7 @@
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-o9N1j7kP5v1r2H2T9GkT1p1xvyvM3pB7rZl8J1uX+3s="
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
       crossorigin=""
     />
     <link rel="stylesheet" href="styles/map.css" />
@@ -24,15 +24,15 @@
         <div class="panel-header">
           <p class="eyebrow">Recovery Intelligence</p>
           <h1>Customize your analysis</h1>
-          <p class="location">Northern Sierra · Last updated 2 hrs ago</p>
+          <p class="location" data-location>Northern Sierra · Last updated 2 hrs ago</p>
         </div>
 
         <section class="panel-block">
           <p class="block-label">I care about</p>
           <div class="chip-list">
-            <button class="chip active" data-center="39.54,-121.48" data-zoom="9">Home buyer</button>
-            <button class="chip" data-center="38.95,-120.11" data-zoom="9">Land manager</button>
-            <button class="chip" data-center="40.38,-122.15" data-zoom="8">County planner</button>
+            <button class="chip active" data-role="home-buyer" data-center="39.54,-121.48" data-zoom="9">Home buyer</button>
+            <button class="chip" data-role="land-manager" data-center="38.95,-120.11" data-zoom="9">Land manager</button>
+            <button class="chip" data-role="county-planner" data-center="40.38,-122.15" data-zoom="8">County planner</button>
           </div>
         </section>
 
@@ -41,25 +41,8 @@
             <p>Your priorities</p>
             <span>Editable</span>
           </div>
-          <div class="priority">
-            <p>Rebuild risk protection</p>
-            <div class="progress"><span style="width: 86%"></span></div>
-            <span class="score">86%</span>
-          </div>
-          <div class="priority">
-            <p>Flood risk protection</p>
-            <div class="progress"><span style="width: 58%"></span></div>
-            <span class="score">58%</span>
-          </div>
-          <div class="priority">
-            <p>Habitat stability</p>
-            <div class="progress"><span style="width: 42%"></span></div>
-            <span class="score">42%</span>
-          </div>
-          <div class="priority">
-            <p>Infrastructure</p>
-            <div class="progress"><span style="width: 70%"></span></div>
-            <span class="score">70%</span>
+          <div class="priorities-list" data-priorities>
+            <p class="muted small">Loading priorities…</p>
           </div>
         </section>
 
@@ -77,19 +60,19 @@
         <section class="panel-block">
           <p class="block-label">Map layers</p>
           <label class="layer">
-            <input type="checkbox" checked />
+            <input type="checkbox" data-layer="burnSeverity" checked />
             <span>Burn severity</span>
           </label>
           <label class="layer">
-            <input type="checkbox" checked />
+            <input type="checkbox" data-layer="floodRisk" checked />
             <span>Flood risk</span>
           </label>
           <label class="layer">
-            <input type="checkbox" />
+            <input type="checkbox" data-layer="erosionRisk" />
             <span>Erosion/block risk</span>
           </label>
           <label class="layer">
-            <input type="checkbox" />
+            <input type="checkbox" data-layer="soilStability" />
             <span>USGS soil maps</span>
           </label>
         </section>
@@ -111,36 +94,26 @@
           <div class="header-meta">
             <div>
               <p class="label">Confidence</p>
-              <strong>92%</strong>
+              <strong data-confidence>92%</strong>
             </div>
             <div>
               <p class="label">Incidents</p>
-              <strong>7 alerts</strong>
+              <strong data-incidents>7 alerts</strong>
             </div>
             <button class="btn small ghost" onclick="window.location.href='login.html'">Share briefing</button>
           </div>
         </header>
         <div id="map"></div>
         <div class="map-tip">
-          <p>
+          <p data-map-tip>
             Tap a marker to view burn intensity, debris flow likelihood, and suggested restoration actions.
           </p>
         </div>
-        <div class="insight-rail">
+        <div class="insight-rail" data-insights>
           <article>
-            <p class="rail-label">Action</p>
-            <strong>Deploy wattles on Mosquito Ridge Rd.</strong>
-            <span>High debris risk · due 12 hrs</span>
-          </article>
-          <article>
-            <p class="rail-label">Monitoring</p>
-            <strong>Stream gauges synced · 4 anomalies</strong>
-            <span>Sent to hydrology team</span>
-          </article>
-          <article>
-            <p class="rail-label">Community</p>
-            <strong>Town hall briefing ready</strong>
-            <span>Shareable guest link active</span>
+            <p class="rail-label">Loading</p>
+            <strong>Fetching latest workflow insights…</strong>
+            <span>Powered by TerraNova demo API</span>
           </article>
         </div>
       </section>
@@ -148,9 +121,10 @@
 
     <script
       src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-      integrity="sha256-VFfQVH6zYtSvt1M6Q671V7EI6uHqGgfRNu6IeB0hXyM="
+      integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
       crossorigin=""
     ></script>
+    <script src="https://unpkg.com/esri-leaflet@3.0.11/dist/esri-leaflet.js"></script>
     <script src="scripts/map.js"></script>
   </body>
 </html>
