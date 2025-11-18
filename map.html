@@ -32,6 +32,18 @@
             <p>Recent fires</p>
             <span>Nationwide feed</span>
           </div>
+          <div class="search-container">
+            <div class="search-wrapper">
+              <input 
+                type="text" 
+                placeholder="Search by state..."
+                class="search-input"
+                data-search-input
+                autocomplete="off"
+              />
+              <div class="autocomplete-suggestions" data-autocomplete-suggestions style="display: none;"></div>
+            </div>
+          </div>
           <div class="fire-list" data-fire-list>
             <button class="fire-card active" data-fire-id="camp-fire-2018" data-tooltip="Click to load Camp Fire analysis with burn severity mapping, watershed stress, and infrastructure overlays.">
               <div>

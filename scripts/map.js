@@ -73,7 +73,37 @@ const state = {
   fireId: FALLBACK_FIRES[0].id,
   timeline: 2,
   priorities: { ...DEFAULT_PRIORITIES },
+  selectedSuggestionIndex: -1,
 };
+
+// US States data for autocomplete (frontend only)
+const US_STATES = [
+  { code: 'AL', name: 'Alabama' }, { code: 'AK', name: 'Alaska' },
+  { code: 'AZ', name: 'Arizona' }, { code: 'AR', name: 'Arkansas' },
+  { code: 'CA', name: 'California' }, { code: 'CO', name: 'Colorado' },
+  { code: 'CT', name: 'Connecticut' }, { code: 'DE', name: 'Delaware' },
+  { code: 'FL', name: 'Florida' }, { code: 'GA', name: 'Georgia' },
+  { code: 'HI', name: 'Hawaii' }, { code: 'ID', name: 'Idaho' },
+  { code: 'IL', name: 'Illinois' }, { code: 'IN', name: 'Indiana' },
+  { code: 'IA', name: 'Iowa' }, { code: 'KS', name: 'Kansas' },
+  { code: 'KY', name: 'Kentucky' }, { code: 'LA', name: 'Louisiana' },
+  { code: 'ME', name: 'Maine' }, { code: 'MD', name: 'Maryland' },
+  { code: 'MA', name: 'Massachusetts' }, { code: 'MI', name: 'Michigan' },
+  { code: 'MN', name: 'Minnesota' }, { code: 'MS', name: 'Mississippi' },
+  { code: 'MO', name: 'Missouri' }, { code: 'MT', name: 'Montana' },
+  { code: 'NE', name: 'Nebraska' }, { code: 'NV', name: 'Nevada' },
+  { code: 'NH', name: 'New Hampshire' }, { code: 'NJ', name: 'New Jersey' },
+  { code: 'NM', name: 'New Mexico' }, { code: 'NY', name: 'New York' },
+  { code: 'NC', name: 'North Carolina' }, { code: 'ND', name: 'North Dakota' },
+  { code: 'OH', name: 'Ohio' }, { code: 'OK', name: 'Oklahoma' },
+  { code: 'OR', name: 'Oregon' }, { code: 'PA', name: 'Pennsylvania' },
+  { code: 'RI', name: 'Rhode Island' }, { code: 'SC', name: 'South Carolina' },
+  { code: 'SD', name: 'South Dakota' }, { code: 'TN', name: 'Tennessee' },
+  { code: 'TX', name: 'Texas' }, { code: 'UT', name: 'Utah' },
+  { code: 'VT', name: 'Vermont' }, { code: 'VA', name: 'Virginia' },
+  { code: 'WA', name: 'Washington' }, { code: 'WV', name: 'West Virginia' },
+  { code: 'WI', name: 'Wisconsin' }, { code: 'WY', name: 'Wyoming' },
+];
 
 let fireCatalog = [...FALLBACK_FIRES];
 
@@ -121,6 +151,8 @@ const els = {
   },
   prioritySliders: document.querySelectorAll('[data-priority-slider]'),
   layerToggles: document.querySelectorAll('.layer input[data-layer]'),
+  searchInput: document.querySelector('[data-search-input]'),
+  autocompleteSuggestions: document.querySelector('[data-autocomplete-suggestions]'),
 };
 
 const debounce = (fn, delay = 350) => {
@@ -612,6 +644,125 @@ if (qnaInput && qnaSubmit && qnaResponse) {
     if (e.key === 'Enter') {
       e.preventDefault();
       qnaSubmit.click();
+    }
+  });
+}
+
+// Autocomplete functionality
+const getStateSuggestions = (query) => {
+  if (!query || query.trim().length < 1) {
+    return [];
+  }
+  
+  const queryUpper = query.trim().toUpperCase();
+  const matches = US_STATES.filter(state => 
+    state.code.includes(queryUpper) || 
+    state.name.toUpperCase().includes(queryUpper)
+  );
+  
+  // Return top 3 matches
+  return matches.slice(0, 3);
+};
+
+const renderAutocomplete = (suggestions) => {
+  if (!els.autocompleteSuggestions) return;
+  
+  if (!suggestions || suggestions.length === 0) {
+    els.autocompleteSuggestions.style.display = 'none';
+    return;
+  }
+  
+  els.autocompleteSuggestions.innerHTML = suggestions
+    .map((state, index) => `
+      <div class="autocomplete-item" data-suggestion-index="${index}">
+        <span class="autocomplete-item-code">${state.code}</span>
+        <span class="autocomplete-item-name">${state.name}</span>
+      </div>
+    `)
+    .join('');
+  
+  els.autocompleteSuggestions.style.display = 'block';
+  state.selectedSuggestionIndex = -1;
+  
+  // Add click handlers
+  els.autocompleteSuggestions.querySelectorAll('.autocomplete-item').forEach((item, index) => {
+    item.addEventListener('click', () => {
+      const selectedState = suggestions[index];
+      if (els.searchInput) {
+        els.searchInput.value = selectedState.name;
+      }
+      els.autocompleteSuggestions.style.display = 'none';
+      state.selectedSuggestionIndex = -1;
+    });
+    
+    item.addEventListener('mouseenter', () => {
+      state.selectedSuggestionIndex = index;
+      updateAutocompleteSelection();
+    });
+  });
+};
+
+const updateAutocompleteSelection = () => {
+  if (!els.autocompleteSuggestions) return;
+  const items = els.autocompleteSuggestions.querySelectorAll('.autocomplete-item');
+  items.forEach((item, index) => {
+    if (index === state.selectedSuggestionIndex) {
+      item.classList.add('selected');
+    } else {
+      item.classList.remove('selected');
+    }
+  });
+};
+
+// Search input event handlers
+if (els.searchInput) {
+  let debounceTimeout;
+  
+  els.searchInput.addEventListener('input', (e) => {
+    const query = e.target.value;
+    
+    clearTimeout(debounceTimeout);
+    
+    debounceTimeout = setTimeout(() => {
+      const suggestions = getStateSuggestions(query);
+      renderAutocomplete(suggestions);
+    }, 150);
+  });
+  
+  els.searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const items = els.autocompleteSuggestions?.querySelectorAll('.autocomplete-item') || [];
+      if (items.length > 0) {
+        state.selectedSuggestionIndex = Math.min(
+          state.selectedSuggestionIndex + 1,
+          items.length - 1
+        );
+        updateAutocompleteSelection();
+      }
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      state.selectedSuggestionIndex = Math.max(state.selectedSuggestionIndex - 1, -1);
+      updateAutocompleteSelection();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const items = els.autocompleteSuggestions?.querySelectorAll('.autocomplete-item') || [];
+      if (state.selectedSuggestionIndex >= 0 && items[state.selectedSuggestionIndex]) {
+        items[state.selectedSuggestionIndex].click();
+      }
+    } else if (e.key === 'Escape') {
+      if (els.autocompleteSuggestions) {
+        els.autocompleteSuggestions.style.display = 'none';
+      }
+    }
+  });
+  
+  // Hide autocomplete when clicking outside
+  document.addEventListener('click', (e) => {
+    if (!els.searchInput?.contains(e.target) && !els.autocompleteSuggestions?.contains(e.target)) {
+      if (els.autocompleteSuggestions) {
+        els.autocompleteSuggestions.style.display = 'none';
+      }
     }
   });
 }
