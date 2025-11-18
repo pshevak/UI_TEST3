@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sign in | TerraNova</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles/login.css" />
+  </head>
+  <body>
+    <main class="login-shell">
+      <div class="noise"></div>
+      <section class="login-card">
+        <a class="back-link" href="index.html">← Back to home</a>
+        <div class="badge">Recovery Intelligence</div>
+        <h1>Welcome back</h1>
+        <p class="subtitle">
+          Authenticate to unlock personalized wildfire recovery priorities and live collaboration tools.
+        </p>
+        <button class="btn gmail" id="gmailLogin">
+          <span class="gmail-icon" aria-hidden="true">G</span>
+          Continue with Gmail
+        </button>
+        <div class="divider">
+          <span></span>
+          <p>or</p>
+          <span></span>
+        </div>
+        <a class="btn outline" href="map.html">Continue as guest</a>
+        <div class="form-meta">
+          <label class="checkbox">
+            <input type="checkbox" checked />
+            <span>Remember device</span>
+          </label>
+          <a href="#">Need help?</a>
+        </div>
+        <p class="disclaimer">
+          By continuing you agree to receive contextual updates on mitigation insights and accept the security policy.
+        </p>
+      </section>
+      <section class="login-preview" aria-hidden="true">
+        <div class="preview-header">
+          <p class="eyebrow">Live mission status</p>
+          <h2>Align BAER teams, land managers, and communities in one map.</h2>
+        </div>
+        <div class="preview-grid">
+          <article>
+            <p class="label">Region</p>
+            <h3>Northern Sierra</h3>
+            <p class="muted">Updated 8 min ago</p>
+          </article>
+          <article>
+            <p class="label">Confidence</p>
+            <h3>92%</h3>
+            <p class="muted">Model transparency on</p>
+          </article>
+          <article>
+            <p class="label">Collaboration</p>
+            <h3>18 active members</h3>
+            <p class="muted">Guest invites enabled</p>
+          </article>
+        </div>
+        <ul class="preview-list">
+          <li>
+            <p class="label">Next steps</p>
+            <strong>Deploy culvert clearing crews before incoming storms.</strong>
+          </li>
+          <li>
+            <p class="label">Community brief</p>
+            <strong>Share Paradise Ridge update to 2,431 subscribers.</strong>
+          </li>
+          <li>
+            <p class="label">Data feeds</p>
+            <strong>NOAA, Landsat, and community sensors streaming.</strong>
+          </li>
+        </ul>
+      </section>
+    </main>
+    <script>
+      const gmailBtn = document.getElementById('gmailLogin');
+      gmailBtn.addEventListener('click', () => {
+        gmailBtn.classList.add('loading');
+        gmailBtn.textContent = 'Connecting to Gmail…';
+        setTimeout(() => {
+          window.location.href = 'map.html';
+        }, 1200);
+      });
+    </script>
+  </body>
+</html>
