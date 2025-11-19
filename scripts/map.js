@@ -142,13 +142,18 @@ const hotspotLayer = L.layerGroup().addTo(map);
 
 // Track raster layers for cleanup
 const rasterLayers = {
-  burnSeverity: null
+  burnSeverity: null,
+  reburnRisk: null,
+  bestNextSteps: null
 };
 
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 
 const els = {
   fireList: document.querySelector('[data-fire-list]'),
+  mapLegend: document.querySelector('[data-map-legend]'),
+  legendTitle: document.querySelector('[data-legend-title]'),
+  legendItems: document.querySelector('[data-legend-items]'),
   fireTitle: document.querySelector('[data-fire-title]'),
   fireMeta: document.querySelector('[data-fire-meta]'),
   mapHeadline: document.querySelector('[data-map-headline]'),
@@ -296,14 +301,30 @@ const renderBurnSeverityRaster = async (fireId) => {
     }
   }
   
-  // Clear existing raster layer
+  // Clear existing raster layer - AGGRESSIVE CLEARING
   if (rasterLayers.burnSeverity) {
-    featureLayerGroups.burnSeverity.removeLayer(rasterLayers.burnSeverity);
+    try {
+      // Remove from map directly if it's there
+      if (map.hasLayer(rasterLayers.burnSeverity)) {
+        map.removeLayer(rasterLayers.burnSeverity);
+      }
+      // Remove from group
+      if (featureLayerGroups.burnSeverity.hasLayer(rasterLayers.burnSeverity)) {
+        featureLayerGroups.burnSeverity.removeLayer(rasterLayers.burnSeverity);
+      }
+    } catch (e) {
+      console.warn('Error clearing burn severity raster:', e);
+    }
     rasterLayers.burnSeverity = null;
   }
   
-  // Clear any existing circles
+  // Clear any existing circles and all layers from group
   featureLayerGroups.burnSeverity.clearLayers();
+  
+  // Ensure group is removed from map before adding new layer
+  if (map.hasLayer(featureLayerGroups.burnSeverity)) {
+    map.removeLayer(featureLayerGroups.burnSeverity);
+  }
   
   try {
     console.log('Loading MTBS burn severity raster for fire:', fireId);
@@ -387,8 +408,8 @@ const renderBurnSeverityRaster = async (fireId) => {
         return mtbsColorMap[severity] || [255, 255, 255, 0];
       },
       resolution: 256,  // Higher = more detail
-      updateWhenIdle: false,  // Update while panning
-      keepBuffer: 2  // Keep tiles in buffer for smoother panning
+      updateWhenIdle: true,  // Update when idle to prevent tile caching issues
+      keepBuffer: 0  // Don't keep buffer - ensures clean switching
       // Note: GeoRasterLayer automatically reads projection from georaster
       // and uses proj4 to convert to Web Mercator for Leaflet
     });
@@ -397,6 +418,9 @@ const renderBurnSeverityRaster = async (fireId) => {
     rasterLayers.burnSeverity = rasterLayer;
     
     console.log('MTBS burn severity raster layer added to map successfully');
+    
+    // Force map refresh to ensure new layer is visible at all zoom levels
+    map.invalidateSize();
     
     // Ensure layer is visible
     syncLayerVisibility();
@@ -408,14 +432,338 @@ const renderBurnSeverityRaster = async (fireId) => {
   }
 };
 
+// Function to render reburn risk raster - EXACTLY like burn severity, just different image
+const renderReburnRiskRaster = async (fireId) => {
+  // Check if georaster libraries are loaded
+  const parseGeorasterFn = window.parseGeoraster || (window.georaster && window.georaster.parseGeoraster);
+  const GeoRasterLayerClass = window.GeoRasterLayer || (window.georasterLayerForLeaflet && window.georasterLayerForLeaflet.GeoRasterLayer);
+  
+  if (!parseGeorasterFn || !GeoRasterLayerClass) {
+    console.error('Georaster libraries not loaded. Available globals:', Object.keys(window).filter(k => k.toLowerCase().includes('georaster')));
+    console.error('parseGeoraster available:', !!parseGeorasterFn);
+    console.error('GeoRasterLayer available:', !!GeoRasterLayerClass);
+    return;
+  }
+  
+  // Define MTBS Albers Conical Equal Area projection (if proj4 is available)
+  // MTBS uses: Albers Conical Equal Area with standard parallels 29.5 and 45.5, central meridian -96.0
+  if (typeof proj4 !== 'undefined') {
+    // EPSG:5070 is USA_Contiguous_Albers_Equal_Area_Conic
+    // But MTBS uses custom parameters, so we'll define it
+    try {
+      proj4.defs('ESRI:102003', '+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23.0 +lon_0=-96.0 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs');
+      console.log('MTBS Albers projection defined');
+    } catch (e) {
+      console.warn('Could not define projection:', e);
+    }
+  }
+  
+  // Clear existing raster layer - AGGRESSIVE CLEARING
+  if (rasterLayers.reburnRisk) {
+    try {
+      // Remove from map directly if it's there
+      if (map.hasLayer(rasterLayers.reburnRisk)) {
+        map.removeLayer(rasterLayers.reburnRisk);
+      }
+      // Remove from group
+      if (featureLayerGroups.reburnRisk.hasLayer(rasterLayers.reburnRisk)) {
+        featureLayerGroups.reburnRisk.removeLayer(rasterLayers.reburnRisk);
+      }
+    } catch (e) {
+      console.warn('Error clearing reburn risk raster:', e);
+    }
+    rasterLayers.reburnRisk = null;
+  }
+  
+  // Clear any existing circles and all layers from group
+  featureLayerGroups.reburnRisk.clearLayers();
+  
+  // Ensure group is removed from map before adding new layer
+  if (map.hasLayer(featureLayerGroups.reburnRisk)) {
+    map.removeLayer(featureLayerGroups.reburnRisk);
+  }
+  
+  try {
+    console.log('Loading reburn risk raster for fire:', fireId);
+    // Load GeoTIFF from backend
+    const response = await fetch(`${API_BASE_URL}/api/reburn-risk/${fireId}.tif`);
+    
+    if (!response.ok) {
+      console.warn('Reburn risk raster not available (status:', response.status, '), using fallback circles');
+      return; // Will fall back to circles
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    console.log('GeoTIFF loaded, size:', arrayBuffer.byteLength, 'bytes');
+    
+    // IMPORTANT: Define MTBS projection BEFORE parsing georaster
+    // GeoRasterLayer needs the projection to be defined in proj4 during initialization
+    if (typeof proj4 !== 'undefined') {
+      // MTBS Albers Conical Equal Area projection definition
+      // From metadata: standard parallels 29.5 and 45.5, central meridian -96.0, latitude of origin 23.0
+      const mtbsAlbersDef = '+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23.0 +lon_0=-96.0 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs';
+      
+      // Define in multiple formats that GeoRasterLayer might look for
+      const projectionCodes = [
+        '32767',           // Numeric code as string (common for user-defined)
+        'EPSG:32767',      // EPSG format
+        'EPSG:5070',       // USA Contiguous Albers (similar parameters)
+        'ESRI:102003',     // ESRI Albers code
+        'MTBS_ALBERS'      // Custom name
+      ];
+      
+      projectionCodes.forEach(code => {
+        if (!proj4.defs(code)) {
+          proj4.defs(code, mtbsAlbersDef);
+          console.log(`Defined projection: ${code}`);
+        }
+      });
+    }
+    
+    // Now parse the georaster (GeoRasterLayer will use the projection we just defined)
+    const georaster = await parseGeorasterFn(arrayBuffer);
+    console.log('Georaster parsed successfully:', {
+      width: georaster.width,
+      height: georaster.height,
+      pixelWidth: georaster.pixelWidth,
+      pixelHeight: georaster.pixelHeight,
+      projection: georaster.projection,
+      noDataValue: georaster.noDataValue
+    });
+    
+    // If georaster has a numeric projection code, convert it to string format
+    // GeoRasterLayer expects projection codes as strings that proj4 can recognize
+    if (georaster.projection && typeof georaster.projection === 'number') {
+      const projCode = georaster.projection;
+      console.log('Numeric projection code detected:', projCode);
+      // Convert to string format - GeoRasterLayer will look for this in proj4
+      // We've already defined it as both "32767" and "EPSG:32767"
+      georaster.projection = String(projCode);
+      console.log('Converted projection to string:', georaster.projection);
+    } else if (georaster.projection && typeof georaster.projection === 'string') {
+      console.log('Projection code is already a string:', georaster.projection);
+    }
+    
+    // Reburn Risk Color Map: 0=Low (green), 1=Medium (orange), 2=High (red), 255=NoData/Unburned (transparent)
+    const reburnColorMap = {
+      0: [0, 153, 0, 200],        // Low - green
+      1: [255, 165, 0, 200],      // Medium - orange
+      2: [255, 0, 0, 200],        // High - red
+      255: [255, 255, 255, 0],    // NoData/Unburned - transparent
+    };
+    
+    // Create raster layer with exact pixel mapping
+    // GeoRasterLayer will automatically handle projection conversion using proj4
+    // It reads projection from georaster and converts to Web Mercator (Leaflet's default)
+    const rasterLayer = new GeoRasterLayerClass({
+      georaster: georaster,
+      opacity: 0.7,  // Semi-transparent overlay
+      pixelValuesToColorFn: (values) => {
+        const risk = Math.round(values[0]); // Get risk value (0-2, or 255 for NoData)
+        return reburnColorMap[risk] || [255, 255, 255, 0];
+      },
+      resolution: 256,  // Higher = more detail
+      updateWhenIdle: true,  // Update when idle to prevent tile caching issues
+      keepBuffer: 0  // Don't keep buffer - ensures clean switching
+      // Note: GeoRasterLayer automatically reads projection from georaster
+      // and uses proj4 to convert to Web Mercator for Leaflet
+    });
+    
+    rasterLayer.addTo(featureLayerGroups.reburnRisk);
+    rasterLayers.reburnRisk = rasterLayer;
+    
+    console.log('Reburn risk raster layer added to map successfully');
+    
+    // Force map refresh to ensure new layer is visible at all zoom levels
+    map.invalidateSize();
+    
+    // Ensure layer is visible
+    syncLayerVisibility();
+    
+  } catch (error) {
+    console.error('Failed to load reburn risk raster:', error);
+    console.error('Error details:', error.message, error.stack);
+    // Fallback: will use circles from backend
+  }
+};
+
+// Function to render best next steps raster - EXACTLY like burn severity, just different image
+const renderBestNextStepsRaster = async (fireId) => {
+  // Check if georaster libraries are loaded
+  const parseGeorasterFn = window.parseGeoraster || (window.georaster && window.georaster.parseGeoraster);
+  const GeoRasterLayerClass = window.GeoRasterLayer || (window.georasterLayerForLeaflet && window.georasterLayerForLeaflet.GeoRasterLayer);
+  
+  if (!parseGeorasterFn || !GeoRasterLayerClass) {
+    console.error('Georaster libraries not loaded. Available globals:', Object.keys(window).filter(k => k.toLowerCase().includes('georaster')));
+    console.error('parseGeoraster available:', !!parseGeorasterFn);
+    console.error('GeoRasterLayer available:', !!GeoRasterLayerClass);
+    return;
+  }
+  
+  // Define MTBS Albers Conical Equal Area projection (if proj4 is available)
+  // MTBS uses: Albers Conical Equal Area with standard parallels 29.5 and 45.5, central meridian -96.0
+  if (typeof proj4 !== 'undefined') {
+    // EPSG:5070 is USA_Contiguous_Albers_Equal_Area_Conic
+    // But MTBS uses custom parameters, so we'll define it
+    try {
+      proj4.defs('ESRI:102003', '+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23.0 +lon_0=-96.0 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs');
+      console.log('MTBS Albers projection defined');
+    } catch (e) {
+      console.warn('Could not define projection:', e);
+    }
+  }
+  
+  // Clear existing raster layer - AGGRESSIVE CLEARING
+  if (rasterLayers.bestNextSteps) {
+    try {
+      // Remove from map directly if it's there
+      if (map.hasLayer(rasterLayers.bestNextSteps)) {
+        map.removeLayer(rasterLayers.bestNextSteps);
+      }
+      // Remove from group
+      if (featureLayerGroups.bestNextSteps.hasLayer(rasterLayers.bestNextSteps)) {
+        featureLayerGroups.bestNextSteps.removeLayer(rasterLayers.bestNextSteps);
+      }
+    } catch (e) {
+      console.warn('Error clearing best next steps raster:', e);
+    }
+    rasterLayers.bestNextSteps = null;
+  }
+  
+  // Clear any existing circles and all layers from group
+  featureLayerGroups.bestNextSteps.clearLayers();
+  
+  // Ensure group is removed from map before adding new layer
+  if (map.hasLayer(featureLayerGroups.bestNextSteps)) {
+    map.removeLayer(featureLayerGroups.bestNextSteps);
+  }
+  
+  try {
+    console.log('Loading best next steps raster for fire:', fireId);
+    // Load GeoTIFF from backend
+    const response = await fetch(`${API_BASE_URL}/api/best-next-steps/${fireId}.tif`);
+    
+    if (!response.ok) {
+      console.warn('Best next steps raster not available (status:', response.status, '), using fallback circles');
+      return; // Will fall back to circles
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    console.log('GeoTIFF loaded, size:', arrayBuffer.byteLength, 'bytes');
+    
+    // IMPORTANT: Define MTBS projection BEFORE parsing georaster
+    // GeoRasterLayer needs the projection to be defined in proj4 during initialization
+    if (typeof proj4 !== 'undefined') {
+      // MTBS Albers Conical Equal Area projection definition
+      // From metadata: standard parallels 29.5 and 45.5, central meridian -96.0, latitude of origin 23.0
+      const mtbsAlbersDef = '+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23.0 +lon_0=-96.0 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs';
+      
+      // Define in multiple formats that GeoRasterLayer might look for
+      const projectionCodes = [
+        '32767',           // Numeric code as string (common for user-defined)
+        'EPSG:32767',      // EPSG format
+        'EPSG:5070',       // USA Contiguous Albers (similar parameters)
+        'ESRI:102003',     // ESRI Albers code
+        'MTBS_ALBERS'      // Custom name
+      ];
+      
+      projectionCodes.forEach(code => {
+        if (!proj4.defs(code)) {
+          proj4.defs(code, mtbsAlbersDef);
+          console.log(`Defined projection: ${code}`);
+        }
+      });
+    }
+    
+    // Now parse the georaster (GeoRasterLayer will use the projection we just defined)
+    const georaster = await parseGeorasterFn(arrayBuffer);
+    console.log('Georaster parsed successfully:', {
+      width: georaster.width,
+      height: georaster.height,
+      pixelWidth: georaster.pixelWidth,
+      pixelHeight: georaster.pixelHeight,
+      projection: georaster.projection,
+      noDataValue: georaster.noDataValue
+    });
+    
+    // If georaster has a numeric projection code, convert it to string format
+    // GeoRasterLayer expects projection codes as strings that proj4 can recognize
+    if (georaster.projection && typeof georaster.projection === 'number') {
+      const projCode = georaster.projection;
+      console.log('Numeric projection code detected:', projCode);
+      // Convert to string format - GeoRasterLayer will look for this in proj4
+      // We've already defined it as both "32767" and "EPSG:32767"
+      georaster.projection = String(projCode);
+      console.log('Converted projection to string:', georaster.projection);
+    } else if (georaster.projection && typeof georaster.projection === 'string') {
+      console.log('Projection code is already a string:', georaster.projection);
+    }
+    
+    // Best Next Steps Color Map
+    const stepsColorMap = {
+      0: [128, 128, 128, 200],    // Abandon/Monitor - gray
+      1: [255, 255, 0, 200],      // Fuel Reduction - yellow
+      2: [0, 102, 0, 200],        // Reforest - dark green
+      3: [153, 102, 51, 200],     // Soil Stabilization - brown
+      255: [255, 255, 255, 0],   // NoData - transparent
+    };
+    
+    // Create raster layer with exact pixel mapping
+    // GeoRasterLayer will automatically handle projection conversion using proj4
+    // It reads projection from georaster and converts to Web Mercator (Leaflet's default)
+    const rasterLayer = new GeoRasterLayerClass({
+      georaster: georaster,
+      opacity: 0.7,  // Semi-transparent overlay
+      pixelValuesToColorFn: (values) => {
+        const step = Math.round(values[0]); // Get step value (0-3, or 255 for NoData)
+        if (step === 255 || isNaN(step)) {
+          return [255, 255, 255, 0]; // Transparent
+        }
+        return stepsColorMap[step] || [255, 255, 255, 0];
+      },
+      resolution: 256,  // Higher = more detail
+      updateWhenIdle: true,  // Update when idle to prevent tile caching issues
+      keepBuffer: 0  // Don't keep buffer - ensures clean switching
+      // Note: GeoRasterLayer automatically reads projection from georaster
+      // and uses proj4 to convert to Web Mercator for Leaflet
+    });
+    
+    rasterLayer.addTo(featureLayerGroups.bestNextSteps);
+    rasterLayers.bestNextSteps = rasterLayer;
+    
+    console.log('Best next steps raster layer added to map successfully');
+    
+    // Force map refresh to ensure new layer is visible at all zoom levels
+    map.invalidateSize();
+    
+    // Ensure layer is visible
+    syncLayerVisibility();
+    
+  } catch (error) {
+    console.error('Failed to load best next steps raster:', error);
+    console.error('Error details:', error.message, error.stack);
+    // Fallback: will use circles from backend
+  }
+};
+
 const renderLayerGroup = async (key, features = []) => {
   const group = featureLayerGroups[key];
   if (!group) return;
   
-  // Special handling for burn severity - use MTBS raster if available
+  // Special handling for raster layers - use GeoTIFF if available
   if (key === 'burnSeverity' && state.fireId) {
     await renderBurnSeverityRaster(state.fireId);
     return; // Don't render circles for burn severity when raster is available
+  }
+  
+  if (key === 'reburnRisk' && state.fireId) {
+    await renderReburnRiskRaster(state.fireId);
+    return; // Don't render circles for reburn risk when raster is available
+  }
+  
+  if (key === 'bestNextSteps' && state.fireId) {
+    await renderBestNextStepsRaster(state.fireId);
+    return; // Don't render circles for best next steps when raster is available
   }
   
   // For other layers, or if raster fails, use circles as before
@@ -444,12 +792,77 @@ const syncLayerVisibility = () => {
     const key = toggle.dataset.layer;
     const group = featureLayerGroups[key];
     if (!group) return;
-    if (toggle.checked) {
+    
+    // Only add/remove if the toggle state matches what's on the map
+    const isOnMap = map.hasLayer(group);
+    
+    if (toggle.checked && !isOnMap) {
+      // Only add if checked and not already on map
       map.addLayer(group);
-    } else {
+    } else if (!toggle.checked && isOnMap) {
+      // Only remove if unchecked and currently on map
       map.removeLayer(group);
     }
   });
+};
+
+// Update legend based on selected layer
+const updateLegend = (layerKey) => {
+  if (!els.mapLegend || !els.legendItems || !els.legendTitle) return;
+  
+  const legends = {
+    burnSeverity: {
+      title: 'Burn Severity',
+      items: [
+        { color: 'transparent', label: 'Unburned', border: '1px dashed rgba(255, 255, 255, 0.3)' },
+        { color: 'rgba(0, 100, 0, 0.78)', label: 'Low severity' },
+        { color: 'rgba(144, 238, 144, 0.78)', label: 'Low-Moderate' },
+        { color: 'rgba(255, 255, 0, 0.78)', label: 'Moderate' },
+        { color: 'rgba(255, 165, 0, 0.78)', label: 'High' },
+        { color: 'rgba(255, 0, 0, 0.78)', label: 'High (increased)' }
+      ]
+    },
+    reburnRisk: {
+      title: 'Reburn Risk',
+      items: [
+        { color: 'rgba(0, 153, 0, 0.78)', label: 'Low' },
+        { color: 'rgba(255, 165, 0, 0.78)', label: 'Medium' },
+        { color: 'rgba(255, 0, 0, 0.78)', label: 'High' }
+      ]
+    },
+    bestNextSteps: {
+      title: 'Best Next Steps',
+      items: [
+        { color: 'rgba(128, 128, 128, 0.78)', label: 'Abandon/Monitor' },
+        { color: 'rgba(255, 255, 0, 0.78)', label: 'Fuel Reduction' },
+        { color: 'rgba(0, 102, 0, 0.78)', label: 'Reforest' },
+        { color: 'rgba(153, 102, 51, 0.78)', label: 'Soil Stabilization' }
+      ]
+    }
+  };
+  
+  const legend = legends[layerKey];
+  if (!legend) {
+    els.mapLegend.style.display = 'none';
+    return;
+  }
+  
+  // Update title
+  els.legendTitle.textContent = legend.title;
+  
+  // Clear and populate legend items
+  els.legendItems.innerHTML = legend.items.map(item => {
+    const borderStyle = item.border ? `border: ${item.border};` : '';
+    return `
+    <div class="legend-item">
+      <div class="legend-color" style="background-color: ${item.color}; ${borderStyle}"></div>
+      <span class="legend-label">${item.label}</span>
+    </div>
+  `;
+  }).join('');
+  
+  // Show legend
+  els.mapLegend.style.display = 'block';
 };
 
 const renderHotspots = (markers = []) => {
@@ -737,6 +1150,13 @@ const renderScenario = async (scenario) => {
     map.flyTo([scenario.fire.lat, scenario.fire.lng], 9, { duration: 1 });
   }
   syncLayerVisibility();
+  
+  // Update legend for the currently checked layer
+  const checkedToggle = Array.from(els.layerToggles).find(t => t.checked);
+  if (checkedToggle) {
+    const activeKey = checkedToggle.dataset.layer;
+    updateLegend(activeKey);
+  }
 };
 
 const loadScenario = async () => {
@@ -770,15 +1190,412 @@ if (els.forecastSlider) {
   });
 }
 
+// Helper function to completely clear ALL layers from the map
+const clearAllLayers = () => {
+  console.log('Clearing all map layers...');
+  
+  // FIRST: Completely destroy all raster layers (including their tile caches)
+  if (rasterLayers.burnSeverity) {
+    try {
+      const layer = rasterLayers.burnSeverity;
+      
+      // Remove from map directly (multiple attempts)
+      if (map.hasLayer(layer)) {
+        map.removeLayer(layer);
+      }
+      
+      // Remove from group
+      if (featureLayerGroups.burnSeverity.hasLayer(layer)) {
+        featureLayerGroups.burnSeverity.removeLayer(layer);
+      }
+      
+      // Destroy the layer completely (clears internal tile cache)
+      if (layer.remove) {
+        layer.remove();
+      }
+      if (layer.removeFrom) {
+        layer.removeFrom(map);
+      }
+      
+      // Aggressively clear tile cache - check multiple possible properties
+      if (layer._tiles) {
+        Object.keys(layer._tiles).forEach(key => {
+          const tile = layer._tiles[key];
+          if (tile) {
+            if (tile.el && tile.el.parentNode) {
+              tile.el.parentNode.removeChild(tile.el);
+            }
+            if (tile.el) {
+              tile.el.remove();
+            }
+          }
+        });
+        layer._tiles = {};
+      }
+      
+      // Clear any canvas elements
+      if (layer._canvas) {
+        if (layer._canvas.parentNode) {
+          layer._canvas.parentNode.removeChild(layer._canvas);
+        }
+        layer._canvas = null;
+      }
+      
+      // Clear any container
+      if (layer._container) {
+        if (layer._container.parentNode) {
+          layer._container.parentNode.removeChild(layer._container);
+        }
+        layer._container = null;
+      }
+      
+      // Force remove from map's internal layers
+      if (map._layers) {
+        const layerId = layer._leaflet_id;
+        if (layerId && map._layers[layerId]) {
+          delete map._layers[layerId];
+        }
+      }
+      
+    } catch (e) {
+      console.warn('Error removing burn severity raster:', e);
+    }
+    rasterLayers.burnSeverity = null;
+  }
+  
+  if (rasterLayers.reburnRisk) {
+    try {
+      const layer = rasterLayers.reburnRisk;
+      
+      // Remove from map directly (multiple attempts)
+      if (map.hasLayer(layer)) {
+        map.removeLayer(layer);
+      }
+      
+      // Remove from group
+      if (featureLayerGroups.reburnRisk.hasLayer(layer)) {
+        featureLayerGroups.reburnRisk.removeLayer(layer);
+      }
+      
+      // Destroy the layer completely (clears internal tile cache)
+      if (layer.remove) {
+        layer.remove();
+      }
+      if (layer.removeFrom) {
+        layer.removeFrom(map);
+      }
+      
+      // Aggressively clear tile cache
+      if (layer._tiles) {
+        Object.keys(layer._tiles).forEach(key => {
+          const tile = layer._tiles[key];
+          if (tile) {
+            if (tile.el && tile.el.parentNode) {
+              tile.el.parentNode.removeChild(tile.el);
+            }
+            if (tile.el) {
+              tile.el.remove();
+            }
+          }
+        });
+        layer._tiles = {};
+      }
+      
+      // Clear any canvas elements
+      if (layer._canvas) {
+        if (layer._canvas.parentNode) {
+          layer._canvas.parentNode.removeChild(layer._canvas);
+        }
+        layer._canvas = null;
+      }
+      
+      // Clear any container
+      if (layer._container) {
+        if (layer._container.parentNode) {
+          layer._container.parentNode.removeChild(layer._container);
+        }
+        layer._container = null;
+      }
+      
+      // Force remove from map's internal layers
+      if (map._layers) {
+        const layerId = layer._leaflet_id;
+        if (layerId && map._layers[layerId]) {
+          delete map._layers[layerId];
+        }
+      }
+      
+    } catch (e) {
+      console.warn('Error removing reburn risk raster:', e);
+    }
+    rasterLayers.reburnRisk = null;
+  }
+  
+  if (rasterLayers.bestNextSteps) {
+    try {
+      const layer = rasterLayers.bestNextSteps;
+      
+      // Remove from map directly (multiple attempts)
+      if (map.hasLayer(layer)) {
+        map.removeLayer(layer);
+      }
+      
+      // Remove from group
+      if (featureLayerGroups.bestNextSteps.hasLayer(layer)) {
+        featureLayerGroups.bestNextSteps.removeLayer(layer);
+      }
+      
+      // Destroy the layer completely (clears internal tile cache)
+      if (layer.remove) {
+        layer.remove();
+      }
+      if (layer.removeFrom) {
+        layer.removeFrom(map);
+      }
+      
+      // Aggressively clear tile cache
+      if (layer._tiles) {
+        Object.keys(layer._tiles).forEach(key => {
+          const tile = layer._tiles[key];
+          if (tile) {
+            if (tile.el && tile.el.parentNode) {
+              tile.el.parentNode.removeChild(tile.el);
+            }
+            if (tile.el) {
+              tile.el.remove();
+            }
+          }
+        });
+        layer._tiles = {};
+      }
+      
+      // Clear any canvas elements
+      if (layer._canvas) {
+        if (layer._canvas.parentNode) {
+          layer._canvas.parentNode.removeChild(layer._canvas);
+        }
+        layer._canvas = null;
+      }
+      
+      // Clear any container
+      if (layer._container) {
+        if (layer._container.parentNode) {
+          layer._container.parentNode.removeChild(layer._container);
+        }
+        layer._container = null;
+      }
+      
+      // Force remove from map's internal layers
+      if (map._layers) {
+        const layerId = layer._leaflet_id;
+        if (layerId && map._layers[layerId]) {
+          delete map._layers[layerId];
+        }
+      }
+      
+    } catch (e) {
+      console.warn('Error removing best next steps raster:', e);
+    }
+    rasterLayers.bestNextSteps = null;
+  }
+  
+  // SECOND: Clear all features from all layer groups and remove groups from map
+  Object.keys(featureLayerGroups).forEach(key => {
+    const group = featureLayerGroups[key];
+    
+    // Remove all layers from the group (including any remaining rasters)
+    try {
+      group.eachLayer((layer) => {
+        try {
+          group.removeLayer(layer);
+          // Also try removing directly from map if it's there
+          if (map.hasLayer(layer)) {
+            map.removeLayer(layer);
+          }
+        } catch (e) {
+          console.warn(`Error removing layer from ${key}:`, e);
+        }
+      });
+    } catch (e) {
+      console.warn(`Error iterating layers in ${key}:`, e);
+    }
+    
+    // Clear the group completely
+    group.clearLayers();
+    
+    // FORCE remove the group from map (even if it says it's not there)
+    try {
+      if (map.hasLayer(group)) {
+        map.removeLayer(group);
+      }
+    } catch (e) {
+      console.warn(`Error removing ${key} group from map:`, e);
+    }
+  });
+  
+  // Force a map refresh to ensure everything is cleared
+  if (map && typeof map.invalidateSize === 'function') {
+    map.invalidateSize();
+  }
+  
+  // Force redraw of all tiles - this clears any cached tile layers
+  if (map && map.eachLayer) {
+    map.eachLayer((layer) => {
+      // If it's a tile layer (has _tileZoom or _tiles), try to redraw it
+      if (layer.redraw && typeof layer.redraw === 'function') {
+        try {
+          layer.redraw();
+        } catch (e) {
+          // Ignore errors
+        }
+      }
+    });
+  }
+  
+  // Force a complete map refresh
+  if (map && map._renderer) {
+    try {
+      map._renderer._update();
+    } catch (e) {
+      // Ignore errors
+    }
+  }
+  
+  console.log('All layers cleared completely');
+};
+
+// Handle zoom events to ensure only active layer is visible
+map.on('zoomend', () => {
+  // After zoom, ensure only the checked layer is visible
+  const checkedToggle = Array.from(els.layerToggles).find(t => t.checked);
+  if (checkedToggle) {
+    const activeKey = checkedToggle.dataset.layer;
+    
+    // Aggressively clear any stray layers that might have been cached
+    Object.keys(featureLayerGroups).forEach(key => {
+      if (key !== activeKey) {
+        const group = featureLayerGroups[key];
+        
+        // Remove group from map
+        if (map.hasLayer(group)) {
+          map.removeLayer(group);
+        }
+        
+        // Clear all layers from the group
+        group.clearLayers();
+        
+        // Also clear the raster layer if it exists
+        const rasterKey = key === 'burnSeverity' ? 'burnSeverity' : 
+                         key === 'reburnRisk' ? 'reburnRisk' : 
+                         key === 'bestNextSteps' ? 'bestNextSteps' : null;
+        if (rasterKey && rasterLayers[rasterKey]) {
+          try {
+            const layer = rasterLayers[rasterKey];
+            if (map.hasLayer(layer)) {
+              map.removeLayer(layer);
+            }
+            if (group.hasLayer(layer)) {
+              group.removeLayer(layer);
+            }
+            if (layer.remove) {
+              layer.remove();
+            }
+            // Aggressively clear tile cache
+            if (layer._tiles) {
+              Object.keys(layer._tiles).forEach(tileKey => {
+                const tile = layer._tiles[tileKey];
+                if (tile) {
+                  if (tile.el && tile.el.parentNode) {
+                    tile.el.parentNode.removeChild(tile.el);
+                  }
+                  if (tile.el) {
+                    tile.el.remove();
+                  }
+                }
+              });
+              layer._tiles = {};
+            }
+            // Clear canvas and container
+            if (layer._canvas && layer._canvas.parentNode) {
+              layer._canvas.parentNode.removeChild(layer._canvas);
+              layer._canvas = null;
+            }
+            if (layer._container && layer._container.parentNode) {
+              layer._container.parentNode.removeChild(layer._container);
+              layer._container = null;
+            }
+            // Remove from map's internal layers
+            if (map._layers && layer._leaflet_id) {
+              delete map._layers[layer._leaflet_id];
+            }
+          } catch (e) {
+            console.warn(`Error clearing ${rasterKey} on zoom:`, e);
+          }
+        }
+      }
+    });
+    
+    // Force multiple map refreshes
+    map.invalidateSize();
+    setTimeout(() => map.invalidateSize(), 50);
+  }
+});
+
 els.layerToggles.forEach((toggle) => {
   toggle.addEventListener('change', async () => {
-    syncLayerVisibility();
-    
-    // If burn severity layer is toggled on, reload the raster
     const key = toggle.dataset.layer;
-    if (key === 'burnSeverity' && toggle.checked && state.fireId) {
-      await renderBurnSeverityRaster(state.fireId);
+    
+    // ALWAYS clear ALL layers first - ensures clean state
+    clearAllLayers();
+    
+    // Force map to redraw and clear any cached tiles
+    map.invalidateSize();
+    
+    // Make layers mutually exclusive - uncheck all others when one is checked
+    if (toggle.checked) {
+      // Uncheck all other toggles FIRST
+      els.layerToggles.forEach((otherToggle) => {
+        if (otherToggle !== toggle) {
+          otherToggle.checked = false;
+        }
+      });
+      
+      // Longer delay to ensure clearing is complete and map has refreshed
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Force multiple map refreshes to clear all cached tiles
+      map.invalidateSize();
+      map._resetView(map.getCenter(), map.getZoom(), { reset: true });
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Now load the selected layer's raster
+      if (state.fireId) {
+        if (key === 'burnSeverity') {
+          await renderBurnSeverityRaster(state.fireId);
+          updateLegend('burnSeverity');
+        } else if (key === 'reburnRisk') {
+          await renderReburnRiskRaster(state.fireId);
+          updateLegend('reburnRisk');
+        } else if (key === 'bestNextSteps') {
+          await renderBestNextStepsRaster(state.fireId);
+          updateLegend('bestNextSteps');
+        }
+      }
+      
+      // Force final refresh after layer is loaded - multiple times to ensure
+      map.invalidateSize();
+      setTimeout(() => map.invalidateSize(), 100);
+      setTimeout(() => map.invalidateSize(), 300);
+    } else {
+      // Layer unchecked - hide legend
+      if (els.mapLegend) {
+        els.mapLegend.style.display = 'none';
+      }
     }
+    // If unchecked, layers are already cleared by clearAllLayers()
+    
+    // Sync visibility after everything is loaded/cleared
+    syncLayerVisibility();
     
     const label = toggle.nextElementSibling?.textContent?.trim() || 'Layer';
     const stateText = toggle.checked ? 'enabled' : 'disabled';

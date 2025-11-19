@@ -486,6 +486,51 @@ body {
   box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5);
 }
 
+.map-legend {
+  background: rgba(32, 12, 2, 0.95);
+  border: 1px solid rgba(255, 184, 117, 0.2);
+  border-radius: 16px;
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.legend-header {
+  margin-bottom: 12px;
+}
+
+.legend-header strong {
+  font-size: 0.9rem;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.legend-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.legend-color {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.legend-label {
+  flex: 1;
+}
+
 .map-tip {
   padding: 16px;
   border-radius: 16px;

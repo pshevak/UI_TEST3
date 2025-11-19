@@ -482,6 +482,109 @@ async def get_burn_severity_raster(fire_id: str):
   )
 
 
+@app.get("/api/reburn-risk/{fire_id}.tif")
+async def get_reburn_risk_raster(fire_id: str):
+  """
+  Returns GeoTIFF raster file for reburn risk classification.
+  Maps fire_id to MTBS event_id and finds the reburn_risk.tif file.
+  """
+  fire = pick_fire(fire_id)
+  mtbs_event_id = fire.get("mtbs_event_id")
+  
+  if not mtbs_event_id:
+    raise HTTPException(
+      status_code=404,
+      detail=f"No MTBS data available for fire: {fire_id}"
+    )
+  
+  # Find the reburn_risk.tif file in CA_data directory
+  # Path: ../../CA_data/{mtbs_event_id}/{mtbs_event_id}_*_reburn_risk.tif
+  # CA_data is at AISD level, not UI_TEST3 level
+  backend_dir = os.path.dirname(os.path.abspath(__file__))
+  ca_data_dir = os.path.join(backend_dir, "..", "..", "CA_data", mtbs_event_id)
+  
+  if not os.path.exists(ca_data_dir):
+    raise HTTPException(
+      status_code=404,
+      detail=f"MTBS data directory not found: {ca_data_dir}"
+    )
+  
+  # Look for reburn_risk.tif file (pattern: {event_id}_*_reburn_risk.tif)
+  pattern = os.path.join(ca_data_dir, f"{mtbs_event_id}_*_reburn_risk.tif")
+  matching_files = glob.glob(pattern)
+  
+  if not matching_files:
+    raise HTTPException(
+      status_code=404,
+      detail=f"Reburn risk raster not found for fire: {fire_id}"
+    )
+  
+  file_path = matching_files[0]  # Use first match
+  
+  return FileResponse(
+    file_path,
+    media_type="image/tiff",
+    headers={
+      "Content-Disposition": f"inline; filename={fire_id}_reburn_risk.tif",
+      "Access-Control-Allow-Origin": "*"
+    }
+  )
+
+
+@app.get("/api/best-next-steps/{fire_id}.tif")
+async def get_best_next_steps_raster(fire_id: str):
+  """
+  Returns GeoTIFF raster file for best next steps classification (grid-based).
+  Maps fire_id to MTBS event_id and finds the best_next_steps_grid.tif file.
+  """
+  fire = pick_fire(fire_id)
+  mtbs_event_id = fire.get("mtbs_event_id")
+  
+  if not mtbs_event_id:
+    raise HTTPException(
+      status_code=404,
+      detail=f"No MTBS data available for fire: {fire_id}"
+    )
+  
+  # Find the best_next_steps_grid.tif file in CA_data directory
+  # Path: ../../CA_data/{mtbs_event_id}/{mtbs_event_id}_*_best_next_steps_grid.tif
+  # CA_data is at AISD level, not UI_TEST3 level
+  backend_dir = os.path.dirname(os.path.abspath(__file__))
+  ca_data_dir = os.path.join(backend_dir, "..", "..", "CA_data", mtbs_event_id)
+  
+  if not os.path.exists(ca_data_dir):
+    raise HTTPException(
+      status_code=404,
+      detail=f"MTBS data directory not found: {ca_data_dir}"
+    )
+  
+  # Look for best_next_steps_grid.tif file (prefer grid version)
+  pattern_grid = os.path.join(ca_data_dir, f"{mtbs_event_id}_*_best_next_steps_grid.tif")
+  matching_files = glob.glob(pattern_grid)
+  
+  # Fallback to non-grid version if grid doesn't exist
+  if not matching_files:
+    pattern = os.path.join(ca_data_dir, f"{mtbs_event_id}_*_best_next_steps.tif")
+    matching_files = glob.glob(pattern)
+  
+  if not matching_files:
+    raise HTTPException(
+      status_code=404,
+      detail=f"Best next steps raster not found for fire: {fire_id}"
+    )
+  
+  file_path = matching_files[0]  # Use first match
+  
+  return FileResponse(
+    file_path,
+    media_type="image/tiff",
+    headers={
+      "Content-Disposition": f"inline; filename={fire_id}_best_next_steps.tif",
+      "Access-Control-Allow-Origin": "*"
+    }
+  )
+
+
 @app.get("/api/health")
 async def health_check():
   return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
