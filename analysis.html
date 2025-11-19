@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Analysis Dashboard | TerraNova</title>
+
+    <!-- Same fonts & styles as map.html -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles/map.css" />
+  </head>
+
+  <body>
+    <div class="analysis-shell">
+      <header class="analysis-header">
+        <p class="eyebrow">Recovery analysis</p>
+        <h1>Analysis dashboard</h1>
+        <p>
+          This space will summarize burn severity, risk reductions, and
+          mitigation workflows across active fires so planners can compare
+          scenarios at a glance.
+        </p>
+        <button class="btn small" onclick="window.location.href='map.html'">
+          ← Back to burn severity map
+        </button>
+      </header>
+
+      <section class="analysis-grid">
+        <!-- 1) Key metrics card with bar chart -->
+        <article class="analysis-card">
+          <h3 style="margin-bottom:8px;">Key metrics</h3>
+          <p style="font-size:14px; opacity:0.8; margin-bottom:12px;">
+            Reburn risk across severity classes (dummy values for demo).
+          </p>
+
+          <canvas id="reburnChart"></canvas>
+
+          <div style="margin-top:12px; font-size:13px; opacity:0.9;">
+            <div>Acres analyzed: <b>153,336</b></div>
+            <div>Communities protected: <b>12</b></div>
+            <div>Avg risk reduction (simulated): <b>27%</b></div>
+          </div>
+        </article>
+
+        <!-- 2) Region comparison card with slider + line chart -->
+        <article class="analysis-card">
+          <h3 style="margin-bottom:8px;">Region comparison</h3>
+          <p style="font-size:14px; opacity:0.8; margin-bottom:8px;">
+            Compare projected risk reduction across fires as you change mitigation intensity.
+          </p>
+
+          <label style="font-size:13px;">
+            Mitigation intensity:
+            <span id="mitigationValue">50</span>%
+          </label>
+          <input
+            id="mitigationSlider"
+            type="range"
+            min="20"
+            max="80"
+            value="50"
+            style="width:100%; margin-bottom:8px;"
+          />
+
+          <canvas id="regionChart"></canvas>
+        </article>
+
+        <!-- 3) Action queue card (no chart) -->
+        <article class="analysis-card">
+          <h3 style="margin-bottom:8px;">Action queue</h3>
+          <p style="font-size:14px; opacity:0.8; margin-bottom:8px;">
+            High-priority mitigation tasks generated from the current model run.
+          </p>
+          <ul style="font-size:13px; line-height:1.5;">
+            <li>Stabilize slopes in <b>Grid 12B–15D</b> before forecast rainfall.</li>
+            <li>Inspect culverts near <b>Highway 32</b> for debris blockage.</li>
+            <li>
+              Flag parcels with <b>High reburn risk</b> for replanting vs grazing trade-off analysis.
+            </li>
+          </ul>
+        </article>
+      </section>
+    </div>
+
+    <!-- Load Chart.js and then init charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+      // ------------------------------
+      // 1) Key metrics - bar chart
+      // ------------------------------
+      const severityLabels = ["Unburned", "Low", "Moderate", "High"];
+      const reburnRisk = [5, 18, 35, 60]; // dummy values
+
+      const reburnCtx = document.getElementById("reburnChart");
+      if (reburnCtx && window.Chart) {
+        new Chart(reburnCtx, {
+          type: "bar",
+          data: {
+            labels: severityLabels,
+            datasets: [
+              {
+                label: "Reburn risk (%)",
+                data: reburnRisk,
+                borderWidth: 1
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: { display: false },
+              title: { display: false }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                max: 100,
+                ticks: { stepSize: 20 }
+              }
+            }
+          }
+        });
+      }
+
+      // ------------------------------
+      // 2) Region comparison - line chart + slider
+      // ------------------------------
+      const regions = ["Camp Fire", "Dixie Fire", "Bootleg Fire"];
+      const baseReduction = [22, 18, 15]; // base risk reduction at 50% intensity
+
+      const regionCtx = document.getElementById("regionChart");
+      const mitigationSlider = document.getElementById("mitigationSlider");
+      const mitigationValue = document.getElementById("mitigationValue");
+
+      function computeReductions(intensity) {
+        const factor = intensity / 50; // 0.4–1.6 if 20–80%
+        return baseReduction.map((v) => Math.round(v * factor));
+      }
+
+      if (regionCtx && mitigationSlider && mitigationValue && window.Chart) {
+        let regionChart = new Chart(regionCtx, {
+          type: "line",
+          data: {
+            labels: regions,
+            datasets: [
+              {
+                label: "Projected risk reduction (%)",
+                data: computeReductions(50),
+                fill: false,
+                borderWidth: 2,
+                tension: 0.3
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: {
+              y: {
+                beginAtZero: true,
+                max: 40,
+                ticks: { stepSize: 10 }
+              }
+            }
+          }
+        });
+
+        mitigationSlider.addEventListener("input", (e) => {
+          const val = Number(e.target.value);
+          mitigationValue.textContent = val;
+          regionChart.data.datasets[0].data = computeReductions(val);
+          regionChart.update();
+        });
+      }
+    </script>
+  </body>
+</html>
+
+/* Make analysis dashboard charts visible & sized */
+.analysis-card canvas {
+  width: 100% !important;
+  max-height: 220px;
+}
