@@ -161,6 +161,7 @@ const els = {
   priorityContainer: document.querySelector('[data-priorities]'),
   insightContainer: document.querySelector('[data-insights]'),
   nextSteps: document.querySelector('[data-next-steps]'),
+  nextStepsContent: document.querySelector('[data-next-steps-content]'),
   mapTip: document.querySelector('[data-map-tip]'),
   weather: document.querySelector('[data-weather]'),
   reburnRisk: document.querySelector('[data-reburn-risk]'),
@@ -923,16 +924,19 @@ const renderPriorities = (priorities = []) => {
 };
 
 const renderNextSteps = (steps = []) => {
-  if (!els.nextSteps) return;
+  const container = els.nextStepsContent || els.nextSteps;
+  if (!container) return;
+
   if (!steps.length) {
-    els.nextSteps.innerHTML = `
+    container.innerHTML = `
       <h3>Next steps</h3>
       <p class="muted small">Adjust the sliders to generate an action plan.</p>
     `;
     return;
   }
+
   const items = steps.map((step) => `<li>${step}</li>`).join('');
-  els.nextSteps.innerHTML = `
+  container.innerHTML = `
     <h3>Next steps</h3>
     <ul>${items}</ul>
   `;
