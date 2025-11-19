@@ -521,3 +521,9 @@ body {
   font-size: 1.1rem;
   margin-bottom: 8px;
 }
+
+/* Make analysis dashboard charts visible & sized */
+.analysis-card canvas {
+  width: 100% !important;
+  max-height: 240px;
+}

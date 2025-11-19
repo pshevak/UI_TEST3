@@ -20,169 +20,169 @@
       <header class="analysis-header">
         <p class="eyebrow">Recovery analysis</p>
         <h1>Analysis dashboard</h1>
-        <p>
-          This space will summarize burn severity, risk reductions, and
-          mitigation workflows across active fires so planners can compare
-          scenarios at a glance.
-        </p>
-        <button class="btn small" onclick="window.location.href='map.html'">
-          ← Back to burn severity map
-        </button>
+
+        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:8px;">
+          <button class="btn small" onclick="window.location.href='map.html'">
+            ← Back to burn severity map
+          </button>
+          <button class="btn small ghost" id="downloadReportBtn">
+            Download report
+          </button>
+        </div>
       </header>
 
       <section class="analysis-grid">
-        <!-- 1) Key metrics card with bar chart -->
+        <!-- 1) Burn pattern overview – pie chart -->
         <article class="analysis-card">
-          <h3 style="margin-bottom:8px;">Key metrics</h3>
-          <p style="font-size:14px; opacity:0.8; margin-bottom:12px;">
-            Reburn risk across severity classes (dummy values for demo).
-          </p>
+          <h3 style="margin-bottom:8px;">Burn pattern overview</h3>
 
-          <canvas id="reburnChart"></canvas>
+          <canvas id="burnPieChart"></canvas>
 
-          <div style="margin-top:12px; font-size:13px; opacity:0.9;">
-            <div>Acres analyzed: <b>153,336</b></div>
-            <div>Communities protected: <b>12</b></div>
-            <div>Avg risk reduction (simulated): <b>27%</b></div>
+          <div style="margin-top:14px; font-size:13px; opacity:0.9;">
+            <div>Acres burned : <b>153,336</b></div>
+            <div>Acres unburned : <b>48,200</b></div>
+            <div>Estimated reburn risk : <b>32%</b></div>
+            <div>Historic fire count in this area : <b>3 events</b></div>
           </div>
         </article>
 
-        <!-- 2) Region comparison card with slider + line chart -->
+        <!-- 2) Best next steps summary -->
         <article class="analysis-card">
-          <h3 style="margin-bottom:8px;">Region comparison</h3>
-          <p style="font-size:14px; opacity:0.8; margin-bottom:8px;">
-            Compare projected risk reduction across fires as you change mitigation intensity.
-          </p>
-
-          <label style="font-size:13px;">
-            Mitigation intensity:
-            <span id="mitigationValue">50</span>%
-          </label>
-          <input
-            id="mitigationSlider"
-            type="range"
-            min="20"
-            max="80"
-            value="50"
-            style="width:100%; margin-bottom:8px;"
-          />
-
-          <canvas id="regionChart"></canvas>
-        </article>
-
-        <!-- 3) Action queue card (no chart) -->
-        <article class="analysis-card">
-          <h3 style="margin-bottom:8px;">Action queue</h3>
-          <p style="font-size:14px; opacity:0.8; margin-bottom:8px;">
-            High-priority mitigation tasks generated from the current model run.
-          </p>
-          <ul style="font-size:13px; line-height:1.5;">
-            <li>Stabilize slopes in <b>Grid 12B–15D</b> before forecast rainfall.</li>
-            <li>Inspect culverts near <b>Highway 32</b> for debris blockage.</li>
+          <h3 style="margin-bottom:8px;">Best next steps</h3>
+          <ul style="font-size:13px; line-height:1.5; display:flex; flex-direction:column; gap:8px;">
             <li>
-              Flag parcels with <b>High reburn risk</b> for replanting vs grazing trade-off analysis.
+              <b>Stabilize high-severity slopes above key roads.</b><br />
+              <span class="muted small">
+                High burn fraction and steep terrain make these segments most likely to shed debris into access routes.
+              </span>
+            </li>
+            <li>
+              <b>Target replanting in repeatedly burned grids.</b><br />
+              <span class="muted small">
+                Historic fire count is highest in three sub-basins, suggesting the need for more fire-resilient species mix.
+              </span>
+            </li>
+            <li>
+              <b>Protect intakes and small community water systems.</b><br />
+              <span class="muted small">
+                Downstream unburned areas rely on headwaters that now sit in moderate-to-high burn zones.
+              </span>
+            </li>
+            <li>
+              <b>Prepare a public-facing map + briefing.</b><br />
+              <span class="muted small">
+                A simple map with burn classes and mitigation priorities helps align residents, agencies, and funders.
+              </span>
             </li>
           </ul>
         </article>
       </section>
     </div>
 
-    <!-- Load Chart.js and then init charts -->
+    <!-- Chart.js for the pie chart -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
       // ------------------------------
-      // 1) Key metrics - bar chart
+      // Data for burn pattern
       // ------------------------------
-      const severityLabels = ["Unburned", "Low", "Moderate", "High"];
-      const reburnRisk = [5, 18, 35, 60]; // dummy values
+      const burnCategories = ["High severity", "Moderate", "Low", "Unburned"];
+      const burnValues = [35, 25, 15, 25]; // % breakdown – replace later
 
-      const reburnCtx = document.getElementById("reburnChart");
-      if (reburnCtx && window.Chart) {
-        new Chart(reburnCtx, {
-          type: "bar",
+      const burnCtx = document.getElementById("burnPieChart");
+
+      if (burnCtx && window.Chart) {
+        new Chart(burnCtx, {
+          type: "pie",
           data: {
-            labels: severityLabels,
+            labels: burnCategories,
             datasets: [
               {
-                label: "Reburn risk (%)",
-                data: reburnRisk,
-                borderWidth: 1
+                data: burnValues,
+                backgroundColor: [
+                  "#ff4e1f", // high
+                  "#ff9b2f", // moderate
+                  "#ffd262", // low
+                  "#3fbf7f"  // unburned
+                ]
               }
             ]
           },
           options: {
             responsive: true,
             plugins: {
-              legend: { display: false },
-              title: { display: false }
-            },
-            scales: {
-              y: {
-                beginAtZero: true,
-                max: 100,
-                ticks: { stepSize: 20 }
+              legend: {
+                position: "bottom",
+                labels: {
+                  boxWidth: 14,
+                  font: { size: 12 }
+                }
               }
             }
           }
         });
       }
 
-      // ------------------------------
-      // 2) Region comparison - line chart + slider
-      // ------------------------------
-      const regions = ["Camp Fire", "Dixie Fire", "Bootleg Fire"];
-      const baseReduction = [22, 18, 15]; // base risk reduction at 50% intensity
+      const downloadBtn = document.getElementById("downloadReportBtn");
 
-      const regionCtx = document.getElementById("regionChart");
-      const mitigationSlider = document.getElementById("mitigationSlider");
-      const mitigationValue = document.getElementById("mitigationValue");
+      function buildReport() {
+        // These values are all placeholders you can swap later
+        const burnedAcres = 153336;
+        const unburnedAcres = 48200;
+        const reburnRisk = 32; // %
+        const historicFires = 3;
 
-      function computeReductions(intensity) {
-        const factor = intensity / 50; // 0.4–1.6 if 20–80%
-        return baseReduction.map((v) => Math.round(v * factor));
+        const reportLines = [
+          "TerraNova – Burn Severity Analysis Report",
+          "====================================================",
+          "",
+          "Region: Camp Fire · CA (placeholder)",
+          "Current snapshot:",
+          `  - Acres burned:   ${burnedAcres.toLocaleString()} ac`,
+          `  - Acres unburned: ${unburnedAcres.toLocaleString()} ac`,
+          `  - Estimated reburn risk: ${reburnRisk}%`,
+          `  - Historic fire count in this area: ${historicFires}`,
+          "",
+          "Burn pattern breakdown (approx, % of footprint):",
+          `  - High severity:    ${burnValues[0]}%`,
+          `  - Moderate severity:${burnValues[1]}%`,
+          `  - Low severity:     ${burnValues[2]}%`,
+          `  - Unburned:         ${burnValues[3]}%`,
+          "",
+          "Best next steps (draft):",
+          "  1) Stabilize high-severity slopes above key roads.",
+          "     Rationale: High burn fraction plus slope increases debris-flow risk into evacuation and service routes.",
+          "",
+          "  2) Target replanting in repeatedly burned grids.",
+          "     Rationale: Areas with multiple historic burns may benefit from more fire-resilient species and spacing strategies.",
+          "",
+          "  3) Protect intakes and small community water systems.",
+          "     Rationale: Headwaters in burned zones can deliver ash and sediment into vulnerable treatment systems.",
+          "",
+          "  4) Prepare a public-facing map + briefing.",
+          "     Rationale: Shared visuals and plain-language summaries help align agencies, communities, and funders.",
+          "",
+          "NOTE: All values in this report are placeholders for demo purposes.",
+        ];
+
+        return reportLines.join("\n");
       }
 
-      if (regionCtx && mitigationSlider && mitigationValue && window.Chart) {
-        let regionChart = new Chart(regionCtx, {
-          type: "line",
-          data: {
-            labels: regions,
-            datasets: [
-              {
-                label: "Projected risk reduction (%)",
-                data: computeReductions(50),
-                fill: false,
-                borderWidth: 2,
-                tension: 0.3
-              }
-            ]
-          },
-          options: {
-            responsive: true,
-            plugins: { legend: { display: false } },
-            scales: {
-              y: {
-                beginAtZero: true,
-                max: 40,
-                ticks: { stepSize: 10 }
-              }
-            }
-          }
-        });
+      if (downloadBtn) {
+        downloadBtn.addEventListener("click", () => {
+          const reportText = buildReport();
+          const blob = new Blob([reportText], { type: "text/plain" });
+          const url = URL.createObjectURL(blob);
 
-        mitigationSlider.addEventListener("input", (e) => {
-          const val = Number(e.target.value);
-          mitigationValue.textContent = val;
-          regionChart.data.datasets[0].data = computeReductions(val);
-          regionChart.update();
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "terranova_analysis_report_demo.txt";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+
+          URL.revokeObjectURL(url);
         });
       }
     </script>
   </body>
 </html>
-
-/* Make analysis dashboard charts visible & sized */
-.analysis-card canvas {
-  width: 100% !important;
-  max-height: 220px;
-}
