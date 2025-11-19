@@ -814,29 +814,29 @@ const updateLegend = (layerKey) => {
     burnSeverity: {
       title: 'Burn Severity',
       items: [
-        { color: 'transparent', label: 'Unburned', border: '1px dashed rgba(255, 255, 255, 0.3)' },
-        { color: 'rgba(0, 100, 0, 0.78)', label: 'Low severity' },
-        { color: 'rgba(144, 238, 144, 0.78)', label: 'Low-Moderate' },
-        { color: 'rgba(255, 255, 0, 0.78)', label: 'Moderate' },
-        { color: 'rgba(255, 165, 0, 0.78)', label: 'High' },
-        { color: 'rgba(255, 0, 0, 0.78)', label: 'High (increased)' }
+        { color: 'transparent', label: 'Unburned', border: '1px dashed rgba(255, 255, 255, 0.3)', tooltip: 'Areas with no fire damage or vegetation loss' },
+        { color: 'rgba(0, 100, 0, 0.78)', label: 'Low severity', tooltip: 'Minimal vegetation damage, soil mostly intact' },
+        { color: 'rgba(144, 238, 144, 0.78)', label: 'Low-Moderate', tooltip: 'Some vegetation loss, moderate soil impact' },
+        { color: 'rgba(255, 255, 0, 0.78)', label: 'Moderate', tooltip: 'Significant vegetation loss, increased erosion risk' },
+        { color: 'rgba(255, 165, 0, 0.78)', label: 'High', tooltip: 'Severe vegetation loss, high erosion and runoff risk' },
+        { color: 'rgba(255, 0, 0, 0.78)', label: 'High (increased)', tooltip: 'Complete vegetation loss, highest erosion and runoff risk' }
       ]
     },
     reburnRisk: {
       title: 'Reburn Risk',
       items: [
-        { color: 'rgba(0, 153, 0, 0.78)', label: 'Low' },
-        { color: 'rgba(255, 165, 0, 0.78)', label: 'Medium' },
-        { color: 'rgba(255, 0, 0, 0.78)', label: 'High' }
+        { color: 'rgba(0, 153, 0, 0.78)', label: 'Low', tooltip: 'Low probability of subsequent fires in this area' },
+        { color: 'rgba(255, 165, 0, 0.78)', label: 'Medium', tooltip: 'Moderate probability of subsequent fires based on fuel accumulation' },
+        { color: 'rgba(255, 0, 0, 0.78)', label: 'High', tooltip: 'High probability of subsequent fires due to fuel buildup and burn history' }
       ]
     },
     bestNextSteps: {
       title: 'Best Next Steps',
       items: [
-        { color: 'rgba(128, 128, 128, 0.78)', label: 'Abandon/Monitor' },
-        { color: 'rgba(255, 255, 0, 0.78)', label: 'Fuel Reduction' },
-        { color: 'rgba(0, 102, 0, 0.78)', label: 'Reforest' },
-        { color: 'rgba(153, 102, 51, 0.78)', label: 'Soil Stabilization' }
+        { color: 'rgba(128, 128, 128, 0.78)', label: 'Abandon/Monitor', tooltip: 'Monitor natural recovery, minimal intervention needed' },
+        { color: 'rgba(255, 255, 0, 0.78)', label: 'Fuel Reduction', tooltip: 'Reduce fuel loads to prevent future fires' },
+        { color: 'rgba(0, 102, 0, 0.78)', label: 'Reforest', tooltip: 'Priority areas for tree planting and forest restoration' },
+        { color: 'rgba(153, 102, 51, 0.78)', label: 'Soil Stabilization', tooltip: 'Urgent soil stabilization needed to prevent erosion' }
       ]
     }
   };
@@ -853,8 +853,9 @@ const updateLegend = (layerKey) => {
   // Clear and populate legend items
   els.legendItems.innerHTML = legend.items.map(item => {
     const borderStyle = item.border ? `border: ${item.border};` : '';
+    const tooltipAttr = item.tooltip ? `data-tooltip="${item.tooltip}"` : '';
     return `
-    <div class="legend-item">
+    <div class="legend-item" ${tooltipAttr}>
       <div class="legend-color" style="background-color: ${item.color}; ${borderStyle}"></div>
       <span class="legend-label">${item.label}</span>
     </div>
@@ -863,6 +864,9 @@ const updateLegend = (layerKey) => {
   
   // Show legend
   els.mapLegend.style.display = 'block';
+  
+  // Re-initialize tooltips for new legend items
+  initializeTooltips();
 };
 
 const renderHotspots = (markers = []) => {
@@ -1611,25 +1615,6 @@ els.layerToggles.forEach((toggle) => {
 // Tooltip system
 // ─────────────────────────────────────────────────────────────────────────────
 const tooltipBox = document.querySelector('[data-tooltip-box]');
-const tooltipElements = document.querySelectorAll('[data-tooltip]');
-
-tooltipElements.forEach((el) => {
-  el.addEventListener('mouseenter', (e) => {
-    const text = el.dataset.tooltip;
-    if (!text || !tooltipBox) return;
-    tooltipBox.textContent = text;
-    tooltipBox.style.display = 'block';
-    positionTooltip(e);
-  });
-
-  el.addEventListener('mousemove', (e) => {
-    positionTooltip(e);
-  });
-
-  el.addEventListener('mouseleave', () => {
-    if (tooltipBox) tooltipBox.style.display = 'none';
-  });
-});
 
 function positionTooltip(e) {
   if (!tooltipBox) return;
@@ -1640,6 +1625,37 @@ function positionTooltip(e) {
   tooltipBox.style.left = `${x}px`;
   tooltipBox.style.top = `${y}px`;
 }
+
+// Initialize tooltips for elements (can be called multiple times for dynamic content)
+const initializeTooltips = () => {
+  const tooltipElements = document.querySelectorAll('[data-tooltip]');
+  
+  tooltipElements.forEach((el) => {
+    // Skip if already has tooltip listeners (check for a marker)
+    if (el._hasTooltipListener) return;
+    el._hasTooltipListener = true;
+    
+    // Add event listeners
+    el.addEventListener('mouseenter', (e) => {
+      const text = el.dataset.tooltip;
+      if (!text || !tooltipBox) return;
+      tooltipBox.textContent = text;
+      tooltipBox.style.display = 'block';
+      positionTooltip(e);
+    });
+
+    el.addEventListener('mousemove', (e) => {
+      positionTooltip(e);
+    });
+
+    el.addEventListener('mouseleave', () => {
+      if (tooltipBox) tooltipBox.style.display = 'none';
+    });
+  });
+};
+
+// Initialize tooltips on page load
+initializeTooltips();
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LLM Q&A system
