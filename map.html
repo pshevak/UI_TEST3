@@ -80,28 +80,19 @@
             />
             <span>Burn severity</span>
           </label>
-          <label class="layer" data-tooltip="Watershed stress: Headwaters and drainage basins where ash, debris, and runoff pressure water systems.">
+          <label class="layer" data-tooltip="Reburn risk: Areas with elevated risk of subsequent fires based on burn history and fuel accumulation.">
             <input
               type="checkbox"
-              data-layer="watershedStress"
-              checked
+              data-layer="reburnRisk"
             />
-            <span>Watershed stress</span>
+            <span>Reburn risk</span>
           </label>
-          <label class="layer" data-tooltip="Slope stability: Steep terrain likely to shed debris or trigger slides, especially after rain.">
+          <label class="layer" data-tooltip="Best next steps: Recommended priority areas for post-fire management and recovery actions.">
             <input
               type="checkbox"
-              data-layer="erosionRisk"
-              checked
+              data-layer="bestNextSteps"
             />
-            <span>Slope stability</span>
-          </label>
-          <label class="layer" data-tooltip="Infrastructure exposure: Roads, utilities, and communications corridors flagged as at-risk from fire or debris.">
-            <input
-              type="checkbox"
-              data-layer="infrastructureRisk"
-            />
-            <span>Infrastructure exposure</span>
+            <span>Best next steps</span>
           </label>
         </section>
 
@@ -165,9 +156,13 @@
             <p class="location" data-map-subhead>Initial assessment (Day 7)</p>
           </div>
           <div class="header-meta">
-            <div data-tooltip="Model confidence: Percentage of pixels classified with high certainty.">
-              <p class="label">Confidence</p>
-              <strong data-confidence>92%</strong>
+            <div data-tooltip="Current weather conditions at the fire location.">
+              <p class="label">Weather</p>
+              <strong data-weather>72°F, Clear</strong>
+            </div>
+            <div data-tooltip="Reburn risk level based on burn history, fuel accumulation, and fire frequency.">
+              <p class="label">Reburn risk</p>
+              <strong data-reburn-risk class="risk-medium">Medium</strong>
             </div>
             <div data-tooltip="Incidents: Number of hotspots or alerts flagged by the model in this fire's footprint.">
               <p class="label">Incidents</p>

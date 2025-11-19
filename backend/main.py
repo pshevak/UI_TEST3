@@ -34,6 +34,7 @@ FIRE_CATALOG: List[Dict] = [
     "summary": "Largest loss of life in CA wildfire history; Paradise community heavily impacted.",
     "perimeter_radius": 25000,
     "region": "Paradise & Magalia",
+    "zipcode": "95969",
   },
   {
     "id": "dixie-fire-2021",
@@ -47,6 +48,7 @@ FIRE_CATALOG: List[Dict] = [
     "summary": "Second-largest CA wildfire; complex terrain through Plumas and Lassen counties.",
     "perimeter_radius": 36000,
     "region": "Feather River Watershed",
+    "zipcode": "95954",
   },
   {
     "id": "bootleg-fire-2021",
@@ -60,6 +62,7 @@ FIRE_CATALOG: List[Dict] = [
     "summary": "Major fire in southern Oregon; threatened critical transmission corridors.",
     "perimeter_radius": 28000,
     "region": "Fremont-Winema NF",
+    "zipcode": "97620",
   },
   {
     "id": "maui-fire-2023",
@@ -73,6 +76,7 @@ FIRE_CATALOG: List[Dict] = [
     "summary": "Urban-interface fire on Maui with catastrophic impacts to Lahaina town.",
     "perimeter_radius": 12000,
     "region": "West Maui",
+    "zipcode": "96761",
   },
   {
     "id": "hurricane-fire-2024",
@@ -86,7 +90,23 @@ FIRE_CATALOG: List[Dict] = [
     "summary": "2024 wildfire in California, mapped by MTBS with Sentinel-2A imagery.",
     "perimeter_radius": 15000,
     "region": "California",
+    "zipcode": "93240",
     "mtbs_event_id": "ca3519911969620240713",
+  },
+  {
+    "id": "canyon-fire-2016",
+    "name": "Canyon Fire",
+    "state": "CA",
+    "lat": 34.597,
+    "lng": -120.584,
+    "acres": 12_749,
+    "start_date": "2016-09-18",
+    "cause": "Under investigation",
+    "summary": "2016 wildfire in California, mapped by MTBS with Landsat 8 OLI imagery (Extended assessment).",
+    "perimeter_radius": 14000,
+    "region": "California",
+    "zipcode": "93436",
+    "mtbs_event_id": "ca3472012055020160918",
   },
 ]
 
@@ -160,16 +180,14 @@ def generate_layers(fire: Dict, timeline_meta: Dict, priorities: Dict[str, float
   decay = 1 - (stage_index / (len(TIMELINE_STAGES) - 1)) * 0.55
   layers: Dict[str, List[Dict]] = {
     "burnSeverity": [],
-    "watershedStress": [],
-    "erosionRisk": [],
-    "infrastructureRisk": [],
+    "reburnRisk": [],
+    "bestNextSteps": [],
   }
 
   color_map = {
     "burnSeverity": "#ff4e1f",
-    "watershedStress": "#33b5ff",
-    "erosionRisk": "#d16cff",
-    "infrastructureRisk": "#ffd262",
+    "reburnRisk": "#ff6b35",
+    "bestNextSteps": "#4ecdc4",
   }
 
   base_radius = fire["perimeter_radius"]
@@ -178,9 +196,8 @@ def generate_layers(fire: Dict, timeline_meta: Dict, priorities: Dict[str, float
   for layer_key in layers.keys():
     weight = priorities.get({
       "burnSeverity": "community",
-      "watershedStress": "watershed",
-      "erosionRisk": "watershed",
-      "infrastructureRisk": "infrastructure",
+      "reburnRisk": "community",
+      "bestNextSteps": "community",
     }[layer_key], 0.25)
 
     for _ in range(2):
@@ -257,11 +274,24 @@ def generate_insights(fire: Dict, timeline_meta: Dict) -> List[Dict]:
 
 
 def format_stats(fire: Dict) -> Dict:
-  confidence = round(random.uniform(0.82, 0.97), 2)
+  # Weather conditions (dummy data for now)
+  temps = [68, 72, 75, 78, 82, 85]
+  conditions = ["Clear", "Partly Cloudy", "Sunny", "Windy"]
+  temp = random.choice(temps)
+  condition = random.choice(conditions)
+  weather = f"{temp}°F, {condition}"
+  
+  # Reburn risk (dummy data - will be calculated later based on burn history)
+  # For now, randomly assign High/Medium/Low
+  risk_levels = ["High", "Medium", "Low"]
+  risk_weights = [0.3, 0.5, 0.2]  # 30% High, 50% Medium, 20% Low
+  reburn_risk = random.choices(risk_levels, weights=risk_weights)[0]
+  
   incidents = random.randint(3, 8)
   updated = f"{fire['region']} · Updated {random.randint(15, 80)} mins ago"
   return {
-    "confidence": confidence,
+    "weather": weather,
+    "reburnRisk": reburn_risk,
     "incidents": incidents,
     "updated": updated,
     "acres": fire["acres"],

@@ -441,6 +441,34 @@ body {
   flex-wrap: wrap;
 }
 
+.header-meta .label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+.header-meta strong {
+  display: block;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+/* Risk level color coding */
+.risk-high {
+  color: #ff4444 !important;
+}
+
+.risk-medium {
+  color: #ffaa00 !important;
+}
+
+.risk-low {
+  color: #44ff44 !important;
+}
+
 .header-meta .btn {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 999px;

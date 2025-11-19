@@ -133,9 +133,8 @@ if (window.L?.esri?.basemapLayer) {
 
 const featureLayerGroups = {
   burnSeverity: L.layerGroup().addTo(map),
-  watershedStress: L.layerGroup().addTo(map),
-  erosionRisk: L.layerGroup().addTo(map),
-  infrastructureRisk: L.layerGroup().addTo(map),
+  reburnRisk: L.layerGroup().addTo(map),
+  bestNextSteps: L.layerGroup().addTo(map),
 };
 
 const firePinsLayer = L.layerGroup().addTo(map);
@@ -158,7 +157,8 @@ const els = {
   insightContainer: document.querySelector('[data-insights]'),
   nextSteps: document.querySelector('[data-next-steps]'),
   mapTip: document.querySelector('[data-map-tip]'),
-  confidence: document.querySelector('[data-confidence]'),
+  weather: document.querySelector('[data-weather]'),
+  reburnRisk: document.querySelector('[data-reburn-risk]'),
   incidents: document.querySelector('[data-incidents]'),
   forecastLabel: document.querySelector('[data-forecast-label]'),
   forecastDesc: document.querySelector('[data-forecast-desc]'),
@@ -522,8 +522,13 @@ const renderNextSteps = (steps = []) => {
 };
 
 const updateStats = (stats = {}) => {
-  if (els.confidence && typeof stats.confidence === 'number') {
-    els.confidence.textContent = `${Math.round(stats.confidence * 100)}%`;
+  if (els.weather && stats.weather) {
+    els.weather.textContent = stats.weather;
+  }
+  if (els.reburnRisk && stats.reburnRisk) {
+    els.reburnRisk.textContent = stats.reburnRisk;
+    // Update risk class for color coding
+    els.reburnRisk.className = `risk-${stats.reburnRisk.toLowerCase()}`;
   }
   if (els.incidents && typeof stats.incidents === 'number') {
     els.incidents.textContent = `${stats.incidents} alerts`;
@@ -544,7 +549,18 @@ const updateHeader = (fire = {}, timeline = {}) => {
     els.fireTitle.textContent = `${fire.name || 'Selected fire'} · ${fire.state || ''}`;
   }
   if (els.mapHeadline) {
-    els.mapHeadline.textContent = `${fire.name || 'Fire'} segmentation ready`;
+    // Format: "Canyon Fire, State zipcode" - e.g., "Canyon Fire, CA 93436"
+    let location = '';
+    if (fire.zipcode && fire.state) {
+      location = `${fire.state} ${fire.zipcode}`;
+    } else if (fire.zipcode) {
+      location = fire.zipcode;
+    } else if (fire.region) {
+      location = fire.region;
+    } else if (fire.state) {
+      location = fire.state;
+    }
+    els.mapHeadline.textContent = `${fire.name || 'Fire'}, ${location}`;
   }
   if (els.mapSubhead && timeline?.label) {
     els.mapSubhead.textContent = timeline.label;
@@ -598,9 +614,8 @@ const buildMockScenario = () => {
   Object.keys(featureLayerGroups).forEach((key) => {
     const baseColor = {
       burnSeverity: '#ff4e1f',
-      watershedStress: '#33b5ff',
-      erosionRisk: '#d16cff',
-      infrastructureRisk: '#ffd262',
+      reburnRisk: '#ff6b35',
+      bestNextSteps: '#4ecdc4',
     }[key];
     layers[key] = Array.from({ length: 2 }).map(() => ({
       coords: [jitter(fire.lat, 0.25), jitter(fire.lng, 0.25)],
