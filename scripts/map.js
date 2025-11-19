@@ -141,6 +141,11 @@ const featureLayerGroups = {
 const firePinsLayer = L.layerGroup().addTo(map);
 const hotspotLayer = L.layerGroup().addTo(map);
 
+// Track raster layers for cleanup
+const rasterLayers = {
+  burnSeverity: null
+};
+
 L.control.zoom({ position: 'bottomright' }).addTo(map);
 
 const els = {
@@ -265,9 +270,155 @@ const renderFirePins = (fires) => {
   });
 };
 
-const renderLayerGroup = (key, features = []) => {
+// Function to render MTBS burn severity raster
+const renderBurnSeverityRaster = async (fireId) => {
+  // Check if georaster libraries are loaded
+  const parseGeorasterFn = window.parseGeoraster || (window.georaster && window.georaster.parseGeoraster);
+  const GeoRasterLayerClass = window.GeoRasterLayer || (window.georasterLayerForLeaflet && window.georasterLayerForLeaflet.GeoRasterLayer);
+  
+  if (!parseGeorasterFn || !GeoRasterLayerClass) {
+    console.error('Georaster libraries not loaded. Available globals:', Object.keys(window).filter(k => k.toLowerCase().includes('georaster')));
+    console.error('parseGeoraster available:', !!parseGeorasterFn);
+    console.error('GeoRasterLayer available:', !!GeoRasterLayerClass);
+    return;
+  }
+  
+  // Define MTBS Albers Conical Equal Area projection (if proj4 is available)
+  // MTBS uses: Albers Conical Equal Area with standard parallels 29.5 and 45.5, central meridian -96.0
+  if (typeof proj4 !== 'undefined') {
+    // EPSG:5070 is USA_Contiguous_Albers_Equal_Area_Conic
+    // But MTBS uses custom parameters, so we'll define it
+    try {
+      proj4.defs('ESRI:102003', '+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23.0 +lon_0=-96.0 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs');
+      console.log('MTBS Albers projection defined');
+    } catch (e) {
+      console.warn('Could not define projection:', e);
+    }
+  }
+  
+  // Clear existing raster layer
+  if (rasterLayers.burnSeverity) {
+    featureLayerGroups.burnSeverity.removeLayer(rasterLayers.burnSeverity);
+    rasterLayers.burnSeverity = null;
+  }
+  
+  // Clear any existing circles
+  featureLayerGroups.burnSeverity.clearLayers();
+  
+  try {
+    console.log('Loading MTBS burn severity raster for fire:', fireId);
+    // Load GeoTIFF from backend
+    const response = await fetch(`${API_BASE_URL}/api/burn-severity/${fireId}.tif`);
+    
+    if (!response.ok) {
+      console.warn('MTBS raster not available (status:', response.status, '), using fallback circles');
+      return; // Will fall back to circles
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    console.log('GeoTIFF loaded, size:', arrayBuffer.byteLength, 'bytes');
+    
+    // IMPORTANT: Define MTBS projection BEFORE parsing georaster
+    // GeoRasterLayer needs the projection to be defined in proj4 during initialization
+    if (typeof proj4 !== 'undefined') {
+      // MTBS Albers Conical Equal Area projection definition
+      // From metadata: standard parallels 29.5 and 45.5, central meridian -96.0, latitude of origin 23.0
+      const mtbsAlbersDef = '+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23.0 +lon_0=-96.0 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs';
+      
+      // Define in multiple formats that GeoRasterLayer might look for
+      const projectionCodes = [
+        '32767',           // Numeric code as string (common for user-defined)
+        'EPSG:32767',      // EPSG format
+        'EPSG:5070',       // USA Contiguous Albers (similar parameters)
+        'ESRI:102003',     // ESRI Albers code
+        'MTBS_ALBERS'      // Custom name
+      ];
+      
+      projectionCodes.forEach(code => {
+        if (!proj4.defs(code)) {
+          proj4.defs(code, mtbsAlbersDef);
+          console.log(`Defined projection: ${code}`);
+        }
+      });
+    }
+    
+    // Now parse the georaster (GeoRasterLayer will use the projection we just defined)
+    const georaster = await parseGeorasterFn(arrayBuffer);
+    console.log('Georaster parsed successfully:', {
+      width: georaster.width,
+      height: georaster.height,
+      pixelWidth: georaster.pixelWidth,
+      pixelHeight: georaster.pixelHeight,
+      projection: georaster.projection,
+      noDataValue: georaster.noDataValue
+    });
+    
+    // If georaster has a numeric projection code, convert it to string format
+    // GeoRasterLayer expects projection codes as strings that proj4 can recognize
+    if (georaster.projection && typeof georaster.projection === 'number') {
+      const projCode = georaster.projection;
+      console.log('Numeric projection code detected:', projCode);
+      // Convert to string format - GeoRasterLayer will look for this in proj4
+      // We've already defined it as both "32767" and "EPSG:32767"
+      georaster.projection = String(projCode);
+      console.log('Converted projection to string:', georaster.projection);
+    } else if (georaster.projection && typeof georaster.projection === 'string') {
+      console.log('Projection code is already a string:', georaster.projection);
+    }
+    
+    // MTBS 6-Class Burn Severity Color Map
+    const mtbsColorMap = {
+      0: [255, 255, 255, 0],      // Unburned - transparent
+      1: [0, 100, 0, 200],        // Low severity - dark green
+      2: [144, 238, 144, 200],    // Low-Moderate - light green
+      3: [255, 255, 0, 200],      // Moderate - yellow
+      4: [255, 165, 0, 200],      // High - orange
+      5: [255, 0, 0, 200],        // High (increased) - red
+    };
+    
+    // Create raster layer with exact pixel mapping
+    // GeoRasterLayer will automatically handle projection conversion using proj4
+    // It reads projection from georaster and converts to Web Mercator (Leaflet's default)
+    const rasterLayer = new GeoRasterLayerClass({
+      georaster: georaster,
+      opacity: 0.7,  // Semi-transparent overlay
+      pixelValuesToColorFn: (values) => {
+        const severity = Math.round(values[0]); // Get severity value (0-5)
+        return mtbsColorMap[severity] || [255, 255, 255, 0];
+      },
+      resolution: 256,  // Higher = more detail
+      updateWhenIdle: false,  // Update while panning
+      keepBuffer: 2  // Keep tiles in buffer for smoother panning
+      // Note: GeoRasterLayer automatically reads projection from georaster
+      // and uses proj4 to convert to Web Mercator for Leaflet
+    });
+    
+    rasterLayer.addTo(featureLayerGroups.burnSeverity);
+    rasterLayers.burnSeverity = rasterLayer;
+    
+    console.log('MTBS burn severity raster layer added to map successfully');
+    
+    // Ensure layer is visible
+    syncLayerVisibility();
+    
+  } catch (error) {
+    console.error('Failed to load MTBS burn severity raster:', error);
+    console.error('Error details:', error.message, error.stack);
+    // Fallback: will use circles from backend
+  }
+};
+
+const renderLayerGroup = async (key, features = []) => {
   const group = featureLayerGroups[key];
   if (!group) return;
+  
+  // Special handling for burn severity - use MTBS raster if available
+  if (key === 'burnSeverity' && state.fireId) {
+    await renderBurnSeverityRaster(state.fireId);
+    return; // Don't render circles for burn severity when raster is available
+  }
+  
+  // For other layers, or if raster fails, use circles as before
   group.clearLayers();
   features.forEach((feature) => {
     if (!feature?.coords) return;
@@ -281,10 +432,11 @@ const renderLayerGroup = (key, features = []) => {
   });
 };
 
-const renderLayers = (layers = {}) => {
-  Object.keys(featureLayerGroups).forEach((key) => {
-    renderLayerGroup(key, layers[key] || []);
+const renderLayers = async (layers = {}) => {
+  const promises = Object.keys(featureLayerGroups).map((key) => {
+    return renderLayerGroup(key, layers[key] || []);
   });
+  await Promise.all(promises);
 };
 
 const syncLayerVisibility = () => {
@@ -554,9 +706,9 @@ const fetchScenario = async () => {
   }
 };
 
-const renderScenario = (scenario) => {
+const renderScenario = async (scenario) => {
   if (!scenario) return;
-  renderLayers(scenario.layers);
+  await renderLayers(scenario.layers);
   renderHotspots(scenario.markers);
   renderPriorities(scenario.priorities);
   renderInsights(scenario.insights);
@@ -576,7 +728,7 @@ const loadScenario = async () => {
   updateForecastLabels();
   setPriorityDisplays();
   const scenario = await fetchScenario();
-  renderScenario(scenario);
+  await renderScenario(scenario);
 };
 
 // Event listeners
@@ -604,8 +756,15 @@ if (els.forecastSlider) {
 }
 
 els.layerToggles.forEach((toggle) => {
-  toggle.addEventListener('change', () => {
+  toggle.addEventListener('change', async () => {
     syncLayerVisibility();
+    
+    // If burn severity layer is toggled on, reload the raster
+    const key = toggle.dataset.layer;
+    if (key === 'burnSeverity' && toggle.checked && state.fireId) {
+      await renderBurnSeverityRaster(state.fireId);
+    }
+    
     const label = toggle.nextElementSibling?.textContent?.trim() || 'Layer';
     const stateText = toggle.checked ? 'enabled' : 'disabled';
     if (els.mapTip) {

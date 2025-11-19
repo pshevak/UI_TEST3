@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import random
+import glob
+import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 
 app = FastAPI(title="TerraNova Demo API", version="0.2.0")
@@ -70,6 +73,20 @@ FIRE_CATALOG: List[Dict] = [
     "summary": "Urban-interface fire on Maui with catastrophic impacts to Lahaina town.",
     "perimeter_radius": 12000,
     "region": "West Maui",
+  },
+  {
+    "id": "hurricane-fire-2024",
+    "name": "Hurricane Fire",
+    "state": "CA",
+    "lat": 35.195,
+    "lng": -119.656,
+    "acres": 13_488,
+    "start_date": "2024-07-13",
+    "cause": "Under investigation",
+    "summary": "2024 wildfire in California, mapped by MTBS with Sentinel-2A imagery.",
+    "perimeter_radius": 15000,
+    "region": "California",
+    "mtbs_event_id": "ca3519911969620240713",
   },
 ]
 
@@ -383,6 +400,56 @@ async def ask_about_fire(fireId: str = Query("camp-fire-2018"), question: str = 
     "answer": answer,
     "generatedAt": datetime.now(timezone.utc).isoformat(),
   }
+
+
+@app.get("/api/burn-severity/{fire_id}.tif")
+async def get_burn_severity_raster(fire_id: str):
+  """
+  Returns MTBS GeoTIFF raster file (dnbr6.tif) for burn severity.
+  
+  Maps fire_id to MTBS event_id and finds the dnbr6.tif file.
+  """
+  fire = pick_fire(fire_id)
+  mtbs_event_id = fire.get("mtbs_event_id")
+  
+  if not mtbs_event_id:
+    raise HTTPException(
+      status_code=404,
+      detail=f"No MTBS data available for fire: {fire_id}"
+    )
+  
+  # Find the dnbr6.tif file in CA_data directory
+  # Path: ../../CA_data/{mtbs_event_id}/{mtbs_event_id}_*_dnbr6.tif
+  # CA_data is at AISD level, not UI_TEST3 level
+  backend_dir = os.path.dirname(os.path.abspath(__file__))
+  ca_data_dir = os.path.join(backend_dir, "..", "..", "CA_data", mtbs_event_id)
+  
+  if not os.path.exists(ca_data_dir):
+    raise HTTPException(
+      status_code=404,
+      detail=f"MTBS data directory not found: {ca_data_dir}"
+    )
+  
+  # Look for dnbr6.tif file (pattern: {event_id}_*_dnbr6.tif)
+  pattern = os.path.join(ca_data_dir, f"{mtbs_event_id}_*_dnbr6.tif")
+  matching_files = glob.glob(pattern)
+  
+  if not matching_files:
+    raise HTTPException(
+      status_code=404,
+      detail=f"MTBS burn severity raster (dnbr6.tif) not found for fire: {fire_id}"
+    )
+  
+  file_path = matching_files[0]  # Use first match
+  
+  return FileResponse(
+    file_path,
+    media_type="image/tiff",
+    headers={
+      "Content-Disposition": f"inline; filename={fire_id}_burn_severity.tif",
+      "Access-Control-Allow-Origin": "*"
+    }
+  )
 
 
 @app.get("/api/health")
