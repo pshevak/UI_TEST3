@@ -700,7 +700,6 @@ body {
     flex-direction: column;
   }
 }
-
 /* Analysis dashboard layout */
 .analysis-shell {
   min-height: 100vh;
@@ -745,3 +744,4 @@ body {
   width: 100% !important;
   max-height: 240px;
 }
+

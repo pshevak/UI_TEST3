@@ -11,6 +11,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.normpath(os.path.join(BACKEND_DIR, ".."))
+DATA_ROOT = os.path.join(PROJECT_ROOT, "CA_data")
+
+
 app = FastAPI(title="TerraNova Demo API", version="0.2.0")
 
 app.add_middleware(
@@ -448,11 +453,8 @@ async def get_burn_severity_raster(fire_id: str):
       detail=f"No MTBS data available for fire: {fire_id}"
     )
   
-  # Find the dnbr6.tif file in CA_data directory
-  # Path: ../../CA_data/{mtbs_event_id}/{mtbs_event_id}_*_dnbr6.tif
-  # CA_data is at AISD level, not UI_TEST3 level
-  backend_dir = os.path.dirname(os.path.abspath(__file__))
-  ca_data_dir = os.path.join(backend_dir, "..", "..", "CA_data", mtbs_event_id)
+  # GeoTIFF data now lives under UI_TEST3/CA_data/{mtbs_event_id}
+  ca_data_dir = os.path.join(DATA_ROOT, mtbs_event_id)
   
   if not os.path.exists(ca_data_dir):
     raise HTTPException(
@@ -497,11 +499,8 @@ async def get_reburn_risk_raster(fire_id: str):
       detail=f"No MTBS data available for fire: {fire_id}"
     )
   
-  # Find the reburn_risk.tif file in CA_data directory
-  # Path: ../../CA_data/{mtbs_event_id}/{mtbs_event_id}_*_reburn_risk.tif
-  # CA_data is at AISD level, not UI_TEST3 level
-  backend_dir = os.path.dirname(os.path.abspath(__file__))
-  ca_data_dir = os.path.join(backend_dir, "..", "..", "CA_data", mtbs_event_id)
+  # GeoTIFF data now lives under UI_TEST3/CA_data/{mtbs_event_id}
+  ca_data_dir = os.path.join(DATA_ROOT, mtbs_event_id)
   
   if not os.path.exists(ca_data_dir):
     raise HTTPException(
@@ -546,11 +545,8 @@ async def get_best_next_steps_raster(fire_id: str):
       detail=f"No MTBS data available for fire: {fire_id}"
     )
   
-  # Find the best_next_steps_grid.tif file in CA_data directory
-  # Path: ../../CA_data/{mtbs_event_id}/{mtbs_event_id}_*_best_next_steps_grid.tif
-  # CA_data is at AISD level, not UI_TEST3 level
-  backend_dir = os.path.dirname(os.path.abspath(__file__))
-  ca_data_dir = os.path.join(backend_dir, "..", "..", "CA_data", mtbs_event_id)
+  # GeoTIFF data now lives under UI_TEST3/CA_data/{mtbs_event_id}
+  ca_data_dir = os.path.join(DATA_ROOT, mtbs_event_id)
   
   if not os.path.exists(ca_data_dir):
     raise HTTPException(
