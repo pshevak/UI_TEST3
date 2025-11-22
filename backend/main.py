@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import random
+import glob
+import os
 from datetime import datetime, timezone
-from typing import Dict, List
+from typing import Dict, List, Optional
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+
+
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.normpath(os.path.join(BACKEND_DIR, ".."))
+DATA_ROOT = os.path.join(PROJECT_ROOT, "CA_data")
 
 
 app = FastAPI(title="TerraNova Demo API", version="0.2.0")
@@ -31,6 +39,7 @@ FIRE_CATALOG: List[Dict] = [
     "summary": "Largest loss of life in CA wildfire history; Paradise community heavily impacted.",
     "perimeter_radius": 25000,
     "region": "Paradise & Magalia",
+    "zipcode": "95969",
   },
   {
     "id": "dixie-fire-2021",
@@ -44,6 +53,7 @@ FIRE_CATALOG: List[Dict] = [
     "summary": "Second-largest CA wildfire; complex terrain through Plumas and Lassen counties.",
     "perimeter_radius": 36000,
     "region": "Feather River Watershed",
+    "zipcode": "95954",
   },
   {
     "id": "bootleg-fire-2021",
@@ -57,6 +67,7 @@ FIRE_CATALOG: List[Dict] = [
     "summary": "Major fire in southern Oregon; threatened critical transmission corridors.",
     "perimeter_radius": 28000,
     "region": "Fremont-Winema NF",
+    "zipcode": "97620",
   },
   {
     "id": "maui-fire-2023",
@@ -70,6 +81,37 @@ FIRE_CATALOG: List[Dict] = [
     "summary": "Urban-interface fire on Maui with catastrophic impacts to Lahaina town.",
     "perimeter_radius": 12000,
     "region": "West Maui",
+    "zipcode": "96761",
+  },
+  {
+    "id": "hurricane-fire-2024",
+    "name": "Hurricane Fire",
+    "state": "CA",
+    "lat": 35.195,
+    "lng": -119.656,
+    "acres": 13_488,
+    "start_date": "2024-07-13",
+    "cause": "Under investigation",
+    "summary": "2024 wildfire in California, mapped by MTBS with Sentinel-2A imagery.",
+    "perimeter_radius": 15000,
+    "region": "California",
+    "zipcode": "93240",
+    "mtbs_event_id": "ca3519911969620240713",
+  },
+  {
+    "id": "canyon-fire-2016",
+    "name": "Canyon Fire",
+    "state": "CA",
+    "lat": 34.597,
+    "lng": -120.584,
+    "acres": 12_749,
+    "start_date": "2016-09-18",
+    "cause": "Under investigation",
+    "summary": "2016 wildfire in California, mapped by MTBS with Landsat 8 OLI imagery (Extended assessment).",
+    "perimeter_radius": 14000,
+    "region": "California",
+    "zipcode": "93436",
+    "mtbs_event_id": "ca3472012055020160918",
   },
 ]
 
@@ -88,13 +130,13 @@ def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
   return max(low, min(high, value))
 
 
-def pick_fire(fire_id: str | None) -> Dict:
+def pick_fire(fire_id: Optional[str]) -> Dict:
   if fire_id and fire_id in FIRE_LOOKUP:
     return FIRE_LOOKUP[fire_id]
   return FIRE_CATALOG[0]
 
 
-def parse_priority(value: float | None, fallback: float) -> float:
+def parse_priority(value: Optional[float], fallback: float) -> float:
   if value is None:
     value = fallback
   return clamp(float(value) / 100.0, 0.05, 1.0)
@@ -143,16 +185,14 @@ def generate_layers(fire: Dict, timeline_meta: Dict, priorities: Dict[str, float
   decay = 1 - (stage_index / (len(TIMELINE_STAGES) - 1)) * 0.55
   layers: Dict[str, List[Dict]] = {
     "burnSeverity": [],
-    "watershedStress": [],
-    "erosionRisk": [],
-    "infrastructureRisk": [],
+    "reburnRisk": [],
+    "bestNextSteps": [],
   }
 
   color_map = {
     "burnSeverity": "#ff4e1f",
-    "watershedStress": "#33b5ff",
-    "erosionRisk": "#d16cff",
-    "infrastructureRisk": "#ffd262",
+    "reburnRisk": "#ff6b35",
+    "bestNextSteps": "#4ecdc4",
   }
 
   base_radius = fire["perimeter_radius"]
@@ -161,9 +201,8 @@ def generate_layers(fire: Dict, timeline_meta: Dict, priorities: Dict[str, float
   for layer_key in layers.keys():
     weight = priorities.get({
       "burnSeverity": "community",
-      "watershedStress": "watershed",
-      "erosionRisk": "watershed",
-      "infrastructureRisk": "infrastructure",
+      "reburnRisk": "community",
+      "bestNextSteps": "community",
     }[layer_key], 0.25)
 
     for _ in range(2):
@@ -240,11 +279,24 @@ def generate_insights(fire: Dict, timeline_meta: Dict) -> List[Dict]:
 
 
 def format_stats(fire: Dict) -> Dict:
-  confidence = round(random.uniform(0.82, 0.97), 2)
+  # Weather conditions (dummy data for now)
+  temps = [68, 72, 75, 78, 82, 85]
+  conditions = ["Clear", "Partly Cloudy", "Sunny", "Windy"]
+  temp = random.choice(temps)
+  condition = random.choice(conditions)
+  weather = f"{temp}°F, {condition}"
+  
+  # Reburn risk (dummy data - will be calculated later based on burn history)
+  # For now, randomly assign High/Medium/Low
+  risk_levels = ["High", "Medium", "Low"]
+  risk_weights = [0.3, 0.5, 0.2]  # 30% High, 50% Medium, 20% Low
+  reburn_risk = random.choices(risk_levels, weights=risk_weights)[0]
+  
   incidents = random.randint(3, 8)
   updated = f"{fire['region']} · Updated {random.randint(15, 80)} mins ago"
   return {
-    "confidence": confidence,
+    "weather": weather,
+    "reburnRisk": reburn_risk,
     "incidents": incidents,
     "updated": updated,
     "acres": fire["acres"],
@@ -252,13 +304,52 @@ def format_stats(fire: Dict) -> Dict:
 
 
 @app.get("/api/fires")
-async def list_fires():
-  return {"fires": FIRE_CATALOG}
+async def list_fires(
+  state: Optional[str] = Query(None, description="Filter by state code (e.g., CA, OR)"),
+  year: Optional[int] = Query(None, description="Filter by year"),
+):
+  """
+  Returns list of fires, optionally filtered by state and year.
+  Results are sorted by most recent first.
+  """
+  filtered_fires = FIRE_CATALOG.copy()
+  
+  # Apply filters
+  if state:
+    state_upper = state.upper().strip()
+    filtered_fires = [f for f in filtered_fires if f["state"].upper() == state_upper]
+  
+  if year:
+    filtered_fires = [
+      f for f in filtered_fires 
+      if f["start_date"] and int(f["start_date"].split("-")[0]) == year
+    ]
+  
+  # Sort by year descending (newest first), then by date within same year
+  def get_sort_key(fire: Dict) -> tuple:
+    date_str = fire.get("start_date", "") or ""
+    if date_str:
+      try:
+        # Extract year, month, day for proper sorting
+        parts = date_str.split("-")
+        if len(parts) >= 3:
+          year = int(parts[0])
+          month = int(parts[1])
+          day = int(parts[2])
+          # Return tuple for sorting: (-year, -month, -day) for descending order
+          return (-year, -month, -day)
+      except (ValueError, IndexError):
+        pass
+    return (0, 0, 0)  # Put fires without dates at the end
+  
+  sorted_fires = sorted(filtered_fires, key=get_sort_key)
+  
+  return {"fires": sorted_fires}
 
 
 @app.get("/api/scenario")
 async def get_scenario(
-  fireId: str | None = Query(None, description="Fire identifier"),
+  fireId: Optional[str] = Query(None, description="Fire identifier"),
   timeline: int = Query(2, ge=0, le=4),
   priorityCommunity: int = Query(70, ge=0, le=100),
   priorityWatershed: int = Query(55, ge=0, le=100),
@@ -344,6 +435,150 @@ async def ask_about_fire(fireId: str = Query("camp-fire-2018"), question: str = 
     "answer": answer,
     "generatedAt": datetime.now(timezone.utc).isoformat(),
   }
+
+
+@app.get("/api/burn-severity/{fire_id}.tif")
+async def get_burn_severity_raster(fire_id: str):
+  """
+  Returns MTBS GeoTIFF raster file (dnbr6.tif) for burn severity.
+  
+  Maps fire_id to MTBS event_id and finds the dnbr6.tif file.
+  """
+  fire = pick_fire(fire_id)
+  mtbs_event_id = fire.get("mtbs_event_id")
+  
+  if not mtbs_event_id:
+    raise HTTPException(
+      status_code=404,
+      detail=f"No MTBS data available for fire: {fire_id}"
+    )
+  
+  # GeoTIFF data now lives under UI_TEST3/CA_data/{mtbs_event_id}
+  ca_data_dir = os.path.join(DATA_ROOT, mtbs_event_id)
+  
+  if not os.path.exists(ca_data_dir):
+    raise HTTPException(
+      status_code=404,
+      detail=f"MTBS data directory not found: {ca_data_dir}"
+    )
+  
+  # Look for dnbr6.tif file (pattern: {event_id}_*_dnbr6.tif)
+  pattern = os.path.join(ca_data_dir, f"{mtbs_event_id}_*_dnbr6.tif")
+  matching_files = glob.glob(pattern)
+  
+  if not matching_files:
+    raise HTTPException(
+      status_code=404,
+      detail=f"MTBS burn severity raster (dnbr6.tif) not found for fire: {fire_id}"
+    )
+  
+  file_path = matching_files[0]  # Use first match
+  
+  return FileResponse(
+    file_path,
+    media_type="image/tiff",
+    headers={
+      "Content-Disposition": f"inline; filename={fire_id}_burn_severity.tif",
+      "Access-Control-Allow-Origin": "*"
+    }
+  )
+
+
+@app.get("/api/reburn-risk/{fire_id}.tif")
+async def get_reburn_risk_raster(fire_id: str):
+  """
+  Returns GeoTIFF raster file for reburn risk classification.
+  Maps fire_id to MTBS event_id and finds the reburn_risk.tif file.
+  """
+  fire = pick_fire(fire_id)
+  mtbs_event_id = fire.get("mtbs_event_id")
+  
+  if not mtbs_event_id:
+    raise HTTPException(
+      status_code=404,
+      detail=f"No MTBS data available for fire: {fire_id}"
+    )
+  
+  # GeoTIFF data now lives under UI_TEST3/CA_data/{mtbs_event_id}
+  ca_data_dir = os.path.join(DATA_ROOT, mtbs_event_id)
+  
+  if not os.path.exists(ca_data_dir):
+    raise HTTPException(
+      status_code=404,
+      detail=f"MTBS data directory not found: {ca_data_dir}"
+    )
+  
+  # Look for reburn_risk.tif file (pattern: {event_id}_*_reburn_risk.tif)
+  pattern = os.path.join(ca_data_dir, f"{mtbs_event_id}_*_reburn_risk.tif")
+  matching_files = glob.glob(pattern)
+  
+  if not matching_files:
+    raise HTTPException(
+      status_code=404,
+      detail=f"Reburn risk raster not found for fire: {fire_id}"
+    )
+  
+  file_path = matching_files[0]  # Use first match
+  
+  return FileResponse(
+    file_path,
+    media_type="image/tiff",
+    headers={
+      "Content-Disposition": f"inline; filename={fire_id}_reburn_risk.tif",
+      "Access-Control-Allow-Origin": "*"
+    }
+  )
+
+
+@app.get("/api/best-next-steps/{fire_id}.tif")
+async def get_best_next_steps_raster(fire_id: str):
+  """
+  Returns GeoTIFF raster file for best next steps classification (grid-based).
+  Maps fire_id to MTBS event_id and finds the best_next_steps_grid.tif file.
+  """
+  fire = pick_fire(fire_id)
+  mtbs_event_id = fire.get("mtbs_event_id")
+  
+  if not mtbs_event_id:
+    raise HTTPException(
+      status_code=404,
+      detail=f"No MTBS data available for fire: {fire_id}"
+    )
+  
+  # GeoTIFF data now lives under UI_TEST3/CA_data/{mtbs_event_id}
+  ca_data_dir = os.path.join(DATA_ROOT, mtbs_event_id)
+  
+  if not os.path.exists(ca_data_dir):
+    raise HTTPException(
+      status_code=404,
+      detail=f"MTBS data directory not found: {ca_data_dir}"
+    )
+  
+  # Look for best_next_steps_grid.tif file (prefer grid version)
+  pattern_grid = os.path.join(ca_data_dir, f"{mtbs_event_id}_*_best_next_steps_grid.tif")
+  matching_files = glob.glob(pattern_grid)
+  
+  # Fallback to non-grid version if grid doesn't exist
+  if not matching_files:
+    pattern = os.path.join(ca_data_dir, f"{mtbs_event_id}_*_best_next_steps.tif")
+    matching_files = glob.glob(pattern)
+  
+  if not matching_files:
+    raise HTTPException(
+      status_code=404,
+      detail=f"Best next steps raster not found for fire: {fire_id}"
+    )
+  
+  file_path = matching_files[0]  # Use first match
+  
+  return FileResponse(
+    file_path,
+    media_type="image/tiff",
+    headers={
+      "Content-Disposition": f"inline; filename={fire_id}_best_next_steps.tif",
+      "Access-Control-Allow-Origin": "*"
+    }
+  )
 
 
 @app.get("/api/health")

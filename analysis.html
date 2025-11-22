@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Analysis Dashboard | TerraNova</title>
+
+    <!-- Same fonts & styles as map.html -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles/map.css" />
+  </head>
+
+  <body>
+    <div class="analysis-shell">
+      <header class="analysis-header">
+        <p class="eyebrow">Recovery analysis</p>
+        <h1>Analysis dashboard</h1>
+
+        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:8px;">
+          <button class="btn small" onclick="window.location.href='map.html'">
+            ← Back to burn severity map
+          </button>
+          <button class="btn small ghost" id="downloadReportBtn">
+            Download report
+          </button>
+        </div>
+      </header>
+
+      <section class="analysis-grid">
+        <!-- 1) Burn pattern overview – pie chart -->
+        <article class="analysis-card">
+          <h3 style="margin-bottom:8px;">Burn pattern overview</h3>
+
+          <canvas id="burnPieChart"></canvas>
+
+          <div style="margin-top:14px; font-size:13px; opacity:0.9;">
+            <div>Acres burned : <b>153,336</b></div>
+            <div>Acres unburned : <b>48,200</b></div>
+            <div>Estimated reburn risk : <b>32%</b></div>
+            <div>Historic fire count in this area : <b>3 events</b></div>
+          </div>
+        </article>
+
+        <!-- 2) Best next steps summary -->
+        <article class="analysis-card">
+          <h3 style="margin-bottom:8px;">Best next steps</h3>
+          <ul style="font-size:13px; line-height:1.5; display:flex; flex-direction:column; gap:8px;">
+            <li>
+              <b>Stabilize high-severity slopes above key roads.</b><br />
+              <span class="muted small">
+                High burn fraction and steep terrain make these segments most likely to shed debris into access routes.
+              </span>
+            </li>
+            <li>
+              <b>Target replanting in repeatedly burned grids.</b><br />
+              <span class="muted small">
+                Historic fire count is highest in three sub-basins, suggesting the need for more fire-resilient species mix.
+              </span>
+            </li>
+            <li>
+              <b>Protect intakes and small community water systems.</b><br />
+              <span class="muted small">
+                Downstream unburned areas rely on headwaters that now sit in moderate-to-high burn zones.
+              </span>
+            </li>
+            <li>
+              <b>Prepare a public-facing map + briefing.</b><br />
+              <span class="muted small">
+                A simple map with burn classes and mitigation priorities helps align residents, agencies, and funders.
+              </span>
+            </li>
+          </ul>
+        </article>
+      </section>
+    </div>
+
+    <!-- Chart.js for the pie chart -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+      // ------------------------------
+      // Data for burn pattern
+      // ------------------------------
+      const burnCategories = ["High severity", "Moderate", "Low", "Unburned"];
+      const burnValues = [35, 25, 15, 25]; // % breakdown – replace later
+
+      const burnCtx = document.getElementById("burnPieChart");
+
+      if (burnCtx && window.Chart) {
+        new Chart(burnCtx, {
+          type: "pie",
+          data: {
+            labels: burnCategories,
+            datasets: [
+              {
+                data: burnValues,
+                backgroundColor: [
+                  "#ff4e1f", // high
+                  "#ff9b2f", // moderate
+                  "#ffd262", // low
+                  "#3fbf7f"  // unburned
+                ]
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: {
+                position: "bottom",
+                labels: {
+                  boxWidth: 14,
+                  font: { size: 12 }
+                }
+              }
+            }
+          }
+        });
+      }
+
+      const downloadBtn = document.getElementById("downloadReportBtn");
+
+      function buildReport() {
+        // These values are all placeholders you can swap later
+        const burnedAcres = 153336;
+        const unburnedAcres = 48200;
+        const reburnRisk = 32; // %
+        const historicFires = 3;
+
+        const reportLines = [
+          "TerraNova – Burn Severity Analysis Report",
+          "====================================================",
+          "",
+          "Region: Camp Fire · CA (placeholder)",
+          "Current snapshot:",
+          `  - Acres burned:   ${burnedAcres.toLocaleString()} ac`,
+          `  - Acres unburned: ${unburnedAcres.toLocaleString()} ac`,
+          `  - Estimated reburn risk: ${reburnRisk}%`,
+          `  - Historic fire count in this area: ${historicFires}`,
+          "",
+          "Burn pattern breakdown (approx, % of footprint):",
+          `  - High severity:    ${burnValues[0]}%`,
+          `  - Moderate severity:${burnValues[1]}%`,
+          `  - Low severity:     ${burnValues[2]}%`,
+          `  - Unburned:         ${burnValues[3]}%`,
+          "",
+          "Best next steps (draft):",
+          "  1) Stabilize high-severity slopes above key roads.",
+          "     Rationale: High burn fraction plus slope increases debris-flow risk into evacuation and service routes.",
+          "",
+          "  2) Target replanting in repeatedly burned grids.",
+          "     Rationale: Areas with multiple historic burns may benefit from more fire-resilient species and spacing strategies.",
+          "",
+          "  3) Protect intakes and small community water systems.",
+          "     Rationale: Headwaters in burned zones can deliver ash and sediment into vulnerable treatment systems.",
+          "",
+          "  4) Prepare a public-facing map + briefing.",
+          "     Rationale: Shared visuals and plain-language summaries help align agencies, communities, and funders.",
+          "",
+          "NOTE: All values in this report are placeholders for demo purposes.",
+        ];
+
+        return reportLines.join("\n");
+      }
+
+      if (downloadBtn) {
+        downloadBtn.addEventListener("click", () => {
+          const reportText = buildReport();
+          const blob = new Blob([reportText], { type: "text/plain" });
+          const url = URL.createObjectURL(blob);
+
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "terranova_analysis_report_demo.txt";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+
+          URL.revokeObjectURL(url);
+        });
+      }
+    </script>
+  </body>
+</html>

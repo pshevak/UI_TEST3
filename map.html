@@ -32,6 +32,26 @@
             <p>Recent fires</p>
             <span>Nationwide feed</span>
           </div>
+          <div class="search-container">
+            <div class="search-wrapper">
+              <input 
+                type="text" 
+                placeholder="Search by state..."
+                class="search-input"
+                data-search-input
+                autocomplete="off"
+              />
+              <div class="autocomplete-suggestions" data-autocomplete-suggestions style="display: none;"></div>
+            </div>
+            <div class="filter-row">
+              <select class="filter-select" data-year-select>
+                <option value="">Select year</option>
+              </select>
+            </div>
+            <button class="search-btn" data-search-btn disabled>
+              Search
+            </button>
+          </div>
           <div class="fire-list" data-fire-list>
             <button class="fire-card active" data-fire-id="camp-fire-2018" data-tooltip="Click to load Camp Fire analysis with burn severity mapping, watershed stress, and infrastructure overlays.">
               <div>
@@ -48,6 +68,32 @@
               <span class="badge">963k ac</span>
             </button>
           </div>
+        </section>
+
+        <section class="panel-block">
+          <p class="block-label">Map layers</p>
+          <label class="layer" data-tooltip="Burn severity: Pixel-level high/moderate/low/unburned classes derived from Landsat-style segmentation.">
+            <input
+              type="checkbox"
+              data-layer="burnSeverity"
+              checked
+            />
+            <span>Burn severity</span>
+          </label>
+          <label class="layer" data-tooltip="Reburn risk: Areas with elevated risk of subsequent fires based on burn history and fuel accumulation.">
+            <input
+              type="checkbox"
+              data-layer="reburnRisk"
+            />
+            <span>Reburn risk</span>
+          </label>
+          <label class="layer" data-tooltip="Best next steps: Recommended priority areas for post-fire management and recovery actions.">
+            <input
+              type="checkbox"
+              data-layer="bestNextSteps"
+            />
+            <span>Best next steps</span>
+          </label>
         </section>
 
         <section class="panel-block priorities">
@@ -94,41 +140,6 @@
           </div>
         </section>
 
-        <section class="panel-block">
-          <p class="block-label">Map layers</p>
-          <label class="layer" data-tooltip="Burn severity: Pixel-level high/moderate/low/unburned classes derived from Landsat-style segmentation.">
-            <input
-              type="checkbox"
-              data-layer="burnSeverity"
-              checked
-            />
-            <span>Burn severity</span>
-          </label>
-          <label class="layer" data-tooltip="Watershed stress: Headwaters and drainage basins where ash, debris, and runoff pressure water systems.">
-            <input
-              type="checkbox"
-              data-layer="watershedStress"
-              checked
-            />
-            <span>Watershed stress</span>
-          </label>
-          <label class="layer" data-tooltip="Slope stability: Steep terrain likely to shed debris or trigger slides, especially after rain.">
-            <input
-              type="checkbox"
-              data-layer="erosionRisk"
-              checked
-            />
-            <span>Slope stability</span>
-          </label>
-          <label class="layer" data-tooltip="Infrastructure exposure: Roads, utilities, and communications corridors flagged as at-risk from fire or debris.">
-            <input
-              type="checkbox"
-              data-layer="infrastructureRisk"
-            />
-            <span>Infrastructure exposure</span>
-          </label>
-        </section>
-
         <section class="legend">
           <h2>Legend</h2>
           <div class="legend-item"><span class="dot high"></span>High priority</div>
@@ -145,9 +156,13 @@
             <p class="location" data-map-subhead>Initial assessment (Day 7)</p>
           </div>
           <div class="header-meta">
-            <div data-tooltip="Model confidence: Percentage of pixels classified with high certainty.">
-              <p class="label">Confidence</p>
-              <strong data-confidence>92%</strong>
+            <div data-tooltip="Current weather conditions at the fire location.">
+              <p class="label">Weather</p>
+              <strong data-weather>72°F, Clear</strong>
+            </div>
+            <div data-tooltip="Reburn risk level based on burn history, fuel accumulation, and fire frequency.">
+              <p class="label">Reburn risk</p>
+              <strong data-reburn-risk class="risk-medium">Medium</strong>
             </div>
             <div data-tooltip="Incidents: Number of hotspots or alerts flagged by the model in this fire's footprint.">
               <p class="label">Incidents</p>
@@ -164,6 +179,15 @@
         </header>
         
         <div id="map"></div>
+        
+        <div class="map-legend" data-map-legend style="display: none;">
+          <div class="legend-header">
+            <strong data-legend-title>Legend</strong>
+          </div>
+          <div class="legend-items" data-legend-items>
+            <!-- Legend items will be populated by JavaScript -->
+          </div>
+        </div>
         
         <div class="map-tip">
           <p data-map-tip>
@@ -198,9 +222,18 @@
         </div>
         
         <section class="next-steps" data-next-steps>
-          <h3>Next steps</h3>
-          <p class="muted small">Adjust the sliders to generate an action plan in plain language.</p>
-        </section>
+          <div class="next-steps-content" data-next-steps-content>
+            <h3>Next steps</h3>
+            <p class="muted small">Adjust the sliders to generate an action plan in plain language.</p>
+          </div>
+        
+          <button
+            class="btn analysis-dashboard-btn"
+            onclick="window.location.href='analysis.html'"
+          >
+            Open analysis dashboard →
+          </button>
+        </section>        
       </section>
     </div>
 
@@ -212,6 +245,9 @@
       crossorigin=""
     ></script>
     <script src="https://unpkg.com/esri-leaflet@3.0.11/dist/esri-leaflet.js"></script>
+    <script src="https://unpkg.com/proj4@2.9.0/dist/proj4.js"></script>
+    <script src="https://unpkg.com/georaster@latest/dist/georaster.browser.bundle.min.js"></script>
+    <script src="https://unpkg.com/georaster-layer-for-leaflet@latest/dist/v3/webpack/bundle/georaster-layer-for-leaflet.min.js"></script>
     <script src="scripts/map.js"></script>
   </body>
 </html>
