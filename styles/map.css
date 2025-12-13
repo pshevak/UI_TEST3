@@ -745,3 +745,56 @@ body {
   max-height: 240px;
 }
 
+/* Reburn risk link in header */
+.reburn-risk-link {
+  position: relative;
+  transition: transform 0.15s ease, background 0.15s ease;
+  padding: 8px 12px;
+  margin: -8px -12px;
+  border-radius: 12px;
+}
+
+.reburn-risk-link:hover {
+  background: rgba(255, 106, 0, 0.15);
+  transform: scale(1.02);
+}
+
+.view-analysis-hint {
+  display: block;
+  font-size: 0.7rem;
+  color: var(--accent);
+  margin-top: 4px;
+  opacity: 0.7;
+  transition: opacity 0.15s ease;
+}
+
+.reburn-risk-link:hover .view-analysis-hint {
+  opacity: 1;
+}
+
+/* Next steps buttons container */
+.next-steps-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.reburn-analysis-btn {
+  background: linear-gradient(120deg, #ff4e1f, #ff9b2f);
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.reburn-analysis-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 20px rgba(255, 78, 31, 0.4);
+}
+
+.analysis-dashboard-btn.ghost {
+  font-size: 0.85rem;
+}
+

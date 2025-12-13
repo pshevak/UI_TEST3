@@ -102,9 +102,10 @@
               <p class="label">Weather</p>
               <strong data-weather>72°F, Clear</strong>
             </div>
-            <div data-tooltip="Reburn risk level based on burn history, fuel accumulation, and fire frequency.">
+            <div data-tooltip="Reburn risk level based on burn history, fuel accumulation, and fire frequency. Click to view detailed analysis." class="reburn-risk-link" onclick="navigateToReburnAnalysis()" style="cursor: pointer;">
               <p class="label">Reburn risk</p>
               <strong data-reburn-risk class="risk-medium">Medium</strong>
+              <span class="view-analysis-hint">View analysis →</span>
             </div>
             <div data-tooltip="Incidents: Number of hotspots or alerts flagged by the model in this fire's footprint.">
               <p class="label">Incidents</p>
@@ -161,12 +162,21 @@
             <p class="muted small">Adjust the sliders to generate an action plan in plain language.</p>
           </div>
         
-          <button
-            class="btn analysis-dashboard-btn"
-            onclick="window.location.href='analysis.html'"
-          >
-            Open analysis dashboard →
-          </button>
+          <div class="next-steps-buttons">
+            <button
+              class="btn reburn-analysis-btn"
+              onclick="navigateToReburnAnalysis()"
+              data-tooltip="View detailed ML-powered reburn risk prediction with feature breakdown and confidence scores."
+            >
+              🔥 View Reburn Risk Analysis
+            </button>
+            <button
+              class="btn analysis-dashboard-btn ghost"
+              onclick="window.location.href='analysis.html'"
+            >
+              Open analysis dashboard →
+            </button>
+          </div>
         </section>        
       </section>
     </div>
@@ -183,7 +193,15 @@
     <script src="https://unpkg.com/georaster@latest/dist/georaster.browser.bundle.min.js"></script>
     <script src="https://unpkg.com/georaster-layer-for-leaflet@latest/dist/v3/webpack/bundle/georaster-layer-for-leaflet.min.js"></script>
     <script src="scripts/map.js?v=seg-overlay"></script>
-        <script>
+    <script>
+      // Navigate to reburn analysis page with current fire ID
+      function navigateToReburnAnalysis() {
+        // Access the state object from map.js (it's in the global scope via window)
+        const fireId = window.state?.fireId || 'ca3617411872220040812';
+        window.location.href = `reburn-analysis.html?fireId=${encodeURIComponent(fireId)}`;
+      }
+    </script>
+    <script>
       // Clean up OAuth query params so the map UI remains tidy after Google redirects
       (() => {
         const params = new URLSearchParams(window.location.search);

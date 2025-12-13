@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reburn Risk Analysis | TerraNova</title>
+
+    <!-- Same fonts & styles as map.html -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles/map.css" />
+    <style>
+      .analysis-shell {
+        min-height: 100vh;
+        padding: clamp(20px, 4vw, 40px);
+        max-width: 1400px;
+        margin: 0 auto;
+      }
+
+      .analysis-header {
+        margin-bottom: 32px;
+      }
+
+      .analysis-header .eyebrow {
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        font-size: 0.75rem;
+        color: var(--muted);
+        margin-bottom: 8px;
+      }
+
+      .analysis-header h1 {
+        font-size: 2.5rem;
+        margin-bottom: 16px;
+      }
+
+      .fire-info {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+        font-size: 0.95rem;
+        color: var(--muted);
+      }
+
+      .fire-info strong {
+        color: var(--text);
+      }
+
+      .analysis-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 24px;
+        margin-top: 24px;
+      }
+
+      .analysis-card {
+        background: var(--panel);
+        border-radius: 24px;
+        padding: 24px;
+        border: 1px solid var(--border);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      }
+
+      .analysis-card h3 {
+        font-size: 1.25rem;
+        margin-bottom: 16px;
+        color: var(--text);
+      }
+
+      /* Risk Level Badge */
+      .risk-badge {
+        display: inline-block;
+        padding: 8px 20px;
+        border-radius: 999px;
+        font-weight: 600;
+        font-size: 1.1rem;
+        margin-bottom: 16px;
+      }
+
+      .risk-high {
+        background: #ff4e1f;
+        color: #fff;
+      }
+
+      .risk-medium {
+        background: #ff9b2f;
+        color: #050814;
+      }
+
+      .risk-low {
+        background: #3fbf7f;
+        color: #050814;
+      }
+
+      /* Gauge Container */
+      .gauge-container {
+        position: relative;
+        width: 200px;
+        height: 200px;
+        margin: 0 auto 20px;
+      }
+
+      .gauge-label {
+        position: absolute;
+        bottom: -30px;
+        left: 50%;
+        transform: translateX(-50%);
+        font-size: 0.9rem;
+        color: var(--muted);
+        text-align: center;
+        width: 100%;
+      }
+
+      /* Confidence Indicator */
+      .confidence-indicator {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-top: 16px;
+      }
+
+      .confidence-bar {
+        flex: 1;
+        height: 8px;
+        background: var(--panel-muted);
+        border-radius: 4px;
+        overflow: hidden;
+      }
+
+      .confidence-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #3fbf7f, #ff9b2f, #ff4e1f);
+        transition: width 0.3s ease;
+      }
+
+      .confidence-value {
+        font-weight: 600;
+        min-width: 50px;
+        text-align: right;
+      }
+
+      /* Feature Table */
+      .feature-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 12px;
+      }
+
+      .feature-table tr {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .feature-table tr:last-child {
+        border-bottom: none;
+      }
+
+      .feature-table td {
+        padding: 12px 8px;
+        font-size: 0.9rem;
+      }
+
+      .feature-table td:first-child {
+        color: var(--muted);
+        width: 50%;
+      }
+
+      .feature-table td:last-child {
+        font-weight: 600;
+        text-align: right;
+      }
+
+      .feature-critical {
+        background: rgba(255, 78, 31, 0.1);
+        border-left: 3px solid #ff4e1f;
+      }
+
+      .feature-critical td:first-child::after {
+        content: " ⭐";
+        color: #ff4e1f;
+        font-size: 0.8rem;
+      }
+
+      /* Loading State */
+      .loading {
+        text-align: center;
+        padding: 40px;
+        color: var(--muted);
+      }
+
+      .loading-spinner {
+        border: 3px solid var(--panel-muted);
+        border-top: 3px solid var(--accent);
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 16px;
+      }
+
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+
+      /* Error State */
+      .error-state {
+        text-align: center;
+        padding: 40px;
+        color: var(--muted);
+      }
+
+      .error-state h3 {
+        color: #ff4e1f;
+        margin-bottom: 12px;
+      }
+
+      /* Prediction Summary */
+      .prediction-summary {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        margin-top: 16px;
+      }
+
+      .prediction-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px;
+        background: var(--panel-muted);
+        border-radius: 12px;
+      }
+
+      .prediction-label {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .prediction-value {
+        font-weight: 600;
+        font-size: 1.1rem;
+      }
+
+      .prediction-yes {
+        color: #ff4e1f;
+      }
+
+      .prediction-no {
+        color: #3fbf7f;
+      }
+
+      /* Risk Distribution Chart Container */
+      .chart-container {
+        position: relative;
+        height: 250px;
+        margin-top: 16px;
+      }
+
+      /* Responsive */
+      @media (max-width: 768px) {
+        .analysis-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .gauge-container {
+          width: 150px;
+          height: 150px;
+        }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="analysis-shell">
+      <header class="analysis-header">
+        <p class="eyebrow">Reburn Risk Analysis</p>
+        <h1 id="fireTitle">Loading analysis...</h1>
+        <div id="fireInfo" class="fire-info" style="display: none;">
+          <span><strong>State:</strong> <span id="fireState">-</span></span>
+          <span><strong>Year:</strong> <span id="fireYear">-</span></span>
+          <span><strong>Acres:</strong> <span id="fireAcres">-</span></span>
+        </div>
+
+        <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:16px;">
+          <button class="btn small" onclick="window.location.href='map.html'">
+            ← Back to burn severity map
+          </button>
+          <button class="btn small ghost" id="downloadReportBtn" style="display: none;">
+            Download report
+          </button>
+        </div>
+      </header>
+
+      <!-- Loading State -->
+      <div id="loadingState" class="loading">
+        <div class="loading-spinner"></div>
+        <p>Loading reburn risk analysis...</p>
+      </div>
+
+      <!-- Error State -->
+      <div id="errorState" class="error-state" style="display: none;">
+        <h3>Unable to load analysis</h3>
+        <p id="errorMessage"></p>
+        <button class="btn small" onclick="window.location.href='map.html'" style="margin-top: 16px;">
+          Return to map
+        </button>
+      </div>
+
+      <!-- Analysis Grid -->
+      <section class="analysis-grid" id="analysisGrid" style="display: none;">
+        <!-- Card 1: Risk Assessment Overview -->
+        <article class="analysis-card">
+          <h3>Risk Assessment</h3>
+          
+          <div style="text-align: center;">
+            <span id="riskBadge" class="risk-badge">-</span>
+          </div>
+
+          <div class="gauge-container">
+            <canvas id="riskGauge"></canvas>
+            <div class="gauge-label">Reburn Probability</div>
+          </div>
+
+          <div class="prediction-summary">
+            <div class="prediction-item">
+              <span class="prediction-label">Prediction:</span>
+              <span class="prediction-value" id="predictionValue">-</span>
+            </div>
+            <div class="prediction-item">
+              <span class="prediction-label">Probability:</span>
+              <span class="prediction-value" id="probabilityValue">-</span>
+            </div>
+          </div>
+
+          <div class="confidence-indicator">
+            <span style="font-size: 0.9rem; color: var(--muted);">Confidence:</span>
+            <div class="confidence-bar">
+              <div class="confidence-fill" id="confidenceFill" style="width: 0%"></div>
+            </div>
+            <span class="confidence-value" id="confidenceValue">-</span>
+          </div>
+        </article>
+
+        <!-- Card 2: Feature Breakdown Table -->
+        <article class="analysis-card">
+          <h3>Feature Breakdown</h3>
+          <p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 16px;">
+            Environmental and historical features used by the model
+          </p>
+          <table class="feature-table" id="featureTable">
+            <tbody>
+              <!-- Populated by JavaScript -->
+            </tbody>
+          </table>
+        </article>
+
+        <!-- Card 3: Risk Distribution Context -->
+        <article class="analysis-card">
+          <h3>Risk Distribution</h3>
+          <p style="font-size: 0.85rem; color: var(--muted); margin-bottom: 16px;">
+            How this fire compares to others in the dataset
+          </p>
+          <div class="chart-container">
+            <canvas id="riskDistributionChart"></canvas>
+          </div>
+          <div id="riskDistributionStats" style="margin-top: 16px; font-size: 0.9rem; color: var(--muted);">
+            <!-- Populated by JavaScript -->
+          </div>
+        </article>
+      </section>
+    </div>
+
+    <!-- Chart.js for visualizations -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+      // API Configuration
+      const inferApiBase = () => {
+        const { protocol, hostname, port } = window.location;
+        if (hostname && hostname !== 'file') {
+          if (hostname === 'localhost' || hostname === '127.0.0.1') {
+            const guessedPort = port === '8000' ? '8001' : port || '8001';
+            return `${protocol}//${hostname}:${guessedPort}`;
+          }
+          return `${protocol}//${hostname}${port ? `:${port}` : ''}`;
+        }
+        return 'http://localhost:8001';
+      };
+
+      const API_BASE = window.TERRANOVA_API_BASE || inferApiBase();
+
+      // Global state
+      let fireInfo = null;
+      let predictionData = null;
+      let riskGaugeChart = null;
+      let riskDistributionChart = null;
+
+      // Parse URL parameter
+      function getFireIdFromUrl() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get('fireId');
+      }
+
+      // Fetch fire metadata
+      async function fetchFireInfo(fireId) {
+        try {
+          const response = await fetch(`${API_BASE}/api/fires`);
+          if (!response.ok) throw new Error('Failed to fetch fire catalog');
+          const data = await response.json();
+          // Handle both array response and {fires: [...]} response formats
+          const fires = Array.isArray(data) ? data : (data.fires || []);
+          const fire = fires.find(f => f.id === fireId || f.fire_id === fireId);
+          if (!fire) throw new Error(`Fire ID "${fireId}" not found in catalog`);
+          return fire;
+        } catch (error) {
+          console.error('Error fetching fire info:', error);
+          throw error;
+        }
+      }
+
+      // Fetch reburn prediction
+      async function fetchReburnPrediction(fireId) {
+        try {
+          const response = await fetch(`${API_BASE}/api/predict-reburn-risk?fireId=${fireId}`);
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || `Failed to fetch prediction: ${response.statusText}`);
+          }
+          return await response.json();
+        } catch (error) {
+          console.error('Error fetching prediction:', error);
+          throw error;
+        }
+      }
+
+      // Fetch sample predictions for distribution
+      async function fetchSamplePredictions() {
+        try {
+          const response = await fetch(`${API_BASE}/api/fires`);
+          if (!response.ok) return [];
+          const data = await response.json();
+          // Handle both array response and {fires: [...]} response formats
+          const fires = Array.isArray(data) ? data : (data.fires || []);
+          const sampleFires = fires.slice(0, 50); // Sample 50 fires
+          const predictions = [];
+          
+          for (const fire of sampleFires) {
+            try {
+              const fireId = fire.id || fire.fire_id;
+              const pred = await fetchReburnPrediction(fireId);
+              predictions.push(pred);
+            } catch (e) {
+              // Skip failed predictions
+            }
+          }
+          return predictions;
+        } catch (error) {
+          console.error('Error fetching sample predictions:', error);
+          return [];
+        }
+      }
+
+      // Render risk gauge
+      function renderRiskGauge(probability) {
+        const ctx = document.getElementById('riskGauge');
+        if (!ctx) return;
+
+        const percentage = Math.round(probability * 100);
+        const remaining = 100 - percentage;
+
+        // Determine color based on risk level
+        let color = '#3fbf7f'; // Low (green)
+        if (probability >= 0.7) color = '#ff4e1f'; // High (red)
+        else if (probability >= 0.4) color = '#ff9b2f'; // Medium (orange)
+
+        if (riskGaugeChart) {
+          riskGaugeChart.destroy();
+        }
+
+        riskGaugeChart = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            datasets: [{
+              data: [percentage, remaining],
+              backgroundColor: [color, 'rgba(255, 255, 255, 0.1)'],
+              borderWidth: 0
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            cutout: '75%',
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    if (context.dataIndex === 0) {
+                      return `Reburn Probability: ${percentage}%`;
+                    }
+                    return '';
+                  }
+                }
+              }
+            }
+          },
+          plugins: [{
+            id: 'centerText',
+            beforeDraw: function(chart) {
+              const ctx = chart.ctx;
+              const centerX = chart.chartArea.left + (chart.chartArea.right - chart.chartArea.left) / 2;
+              const centerY = chart.chartArea.top + (chart.chartArea.bottom - chart.chartArea.top) / 2;
+              
+              ctx.save();
+              ctx.font = 'bold 2rem Space Grotesk';
+              ctx.fillStyle = color;
+              ctx.textAlign = 'center';
+              ctx.textBaseline = 'middle';
+              ctx.fillText(`${percentage}%`, centerX, centerY - 10);
+              
+              ctx.font = '0.9rem Space Grotesk';
+              ctx.fillStyle = 'var(--muted)';
+              ctx.fillText('probability', centerX, centerY + 15);
+              ctx.restore();
+            }
+          }]
+        });
+      }
+
+      // Render feature table
+      function renderFeatureTable(features) {
+        const tbody = document.getElementById('featureTable');
+        if (!tbody || !features) return;
+
+        tbody.innerHTML = '';
+
+        const featureLabels = {
+          elevation_m: 'Elevation',
+          avg_temp_c: 'Average Temperature',
+          soil_moisture_pct: 'Soil Moisture',
+          gw_depth_ft: 'Groundwater Depth',
+          ph_val: 'pH Value',
+          precip_mm: 'Precipitation',
+          land_burned_frequency: 'Land Burned Frequency',
+          state: 'State'
+        };
+
+        const featureUnits = {
+          elevation_m: 'm',
+          avg_temp_c: '°C',
+          soil_moisture_pct: '%',
+          gw_depth_ft: 'ft',
+          ph_val: '',
+          precip_mm: 'mm',
+          land_burned_frequency: '',
+          state: ''
+        };
+
+        const criticalFeature = 'land_burned_frequency';
+
+        Object.entries(features).forEach(([key, value]) => {
+          if (!featureLabels[key]) return;
+
+          const row = document.createElement('tr');
+          if (key === criticalFeature) {
+            row.classList.add('feature-critical');
+          }
+
+          const labelCell = document.createElement('td');
+          labelCell.textContent = featureLabels[key];
+          
+          const valueCell = document.createElement('td');
+          if (typeof value === 'number') {
+            valueCell.textContent = value.toLocaleString(undefined, { 
+              maximumFractionDigits: key === 'ph_val' ? 2 : 1 
+            });
+          } else {
+            valueCell.textContent = value;
+          }
+          if (featureUnits[key]) {
+            valueCell.textContent += ` ${featureUnits[key]}`;
+          }
+
+          row.appendChild(labelCell);
+          row.appendChild(valueCell);
+          tbody.appendChild(row);
+        });
+      }
+
+      // Render risk distribution chart
+      async function renderRiskDistribution(currentFireId) {
+        const ctx = document.getElementById('riskDistributionChart');
+        if (!ctx) return;
+
+        const samplePredictions = await fetchSamplePredictions();
+        const riskCounts = { High: 0, Medium: 0, Low: 0 };
+        
+        samplePredictions.forEach(pred => {
+          riskCounts[pred.risk_level] = (riskCounts[pred.risk_level] || 0) + 1;
+        });
+
+        // Add current fire to counts
+        if (predictionData) {
+          const currentRisk = predictionData.risk_level;
+          riskCounts[currentRisk] = (riskCounts[currentRisk] || 0) + 1;
+        }
+
+        if (riskDistributionChart) {
+          riskDistributionChart.destroy();
+        }
+
+        riskDistributionChart = new Chart(ctx, {
+          type: 'doughnut',
+          data: {
+            labels: ['High Risk', 'Medium Risk', 'Low Risk'],
+            datasets: [{
+              data: [riskCounts.High, riskCounts.Medium, riskCounts.Low],
+              backgroundColor: ['#ff4e1f', '#ff9b2f', '#3fbf7f']
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+              legend: {
+                position: 'bottom',
+                labels: {
+                  boxWidth: 14,
+                  font: { size: 12 }
+                }
+              },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    const label = context.label || '';
+                    const value = context.parsed || 0;
+                    const total = riskCounts.High + riskCounts.Medium + riskCounts.Low;
+                    const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
+                    return `${label}: ${value} fires (${percentage}%)`;
+                  }
+                }
+              }
+            }
+          }
+        });
+
+        // Update stats text
+        const statsEl = document.getElementById('riskDistributionStats');
+        if (statsEl) {
+          const total = riskCounts.High + riskCounts.Medium + riskCounts.Low;
+          statsEl.innerHTML = `
+            <div>High Risk: <strong>${riskCounts.High}</strong> fires</div>
+            <div>Medium Risk: <strong>${riskCounts.Medium}</strong> fires</div>
+            <div>Low Risk: <strong>${riskCounts.Low}</strong> fires</div>
+            <div style="margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.1);">
+              Total sampled: <strong>${total}</strong> fires
+            </div>
+          `;
+        }
+      }
+
+      // Update UI with data
+      function updateUI() {
+        // Update header
+        if (fireInfo) {
+          document.getElementById('fireTitle').textContent = fireInfo.name || 'Fire Analysis';
+          document.getElementById('fireState').textContent = fireInfo.state || '-';
+          document.getElementById('fireYear').textContent = fireInfo.year || fireInfo.start_date?.split('-')[0] || '-';
+          document.getElementById('fireAcres').textContent = fireInfo.acres ? fireInfo.acres.toLocaleString() : '-';
+          document.getElementById('fireInfo').style.display = 'flex';
+        }
+
+        // Update risk badge
+        if (predictionData) {
+          const riskLevel = predictionData.risk_level;
+          const badge = document.getElementById('riskBadge');
+          badge.textContent = riskLevel + ' Risk';
+          badge.className = `risk-badge risk-${riskLevel.toLowerCase()}`;
+
+          // Update prediction value
+          const predictionValue = document.getElementById('predictionValue');
+          if (predictionData.reburn_prediction) {
+            predictionValue.textContent = 'Will Reburn';
+            predictionValue.className = 'prediction-value prediction-yes';
+          } else {
+            predictionValue.textContent = 'No Reburn';
+            predictionValue.className = 'prediction-value prediction-no';
+          }
+
+          // Update probability
+          const probability = Math.round(predictionData.reburn_probability * 100);
+          document.getElementById('probabilityValue').textContent = `${probability}%`;
+
+          // Update confidence
+          const confidence = Math.round(predictionData.confidence * 100);
+          document.getElementById('confidenceValue').textContent = `${confidence}%`;
+          document.getElementById('confidenceFill').style.width = `${confidence}%`;
+
+          // Render gauge
+          renderRiskGauge(predictionData.reburn_probability);
+
+          // Render feature table
+          if (predictionData.features_used) {
+            renderFeatureTable(predictionData.features_used);
+          }
+        }
+
+        // Render risk distribution
+        renderRiskDistribution(fireInfo?.id);
+
+        // Show download button
+        document.getElementById('downloadReportBtn').style.display = 'inline-block';
+      }
+
+      // Show error state
+      function showError(message) {
+        document.getElementById('loadingState').style.display = 'none';
+        document.getElementById('analysisGrid').style.display = 'none';
+        document.getElementById('errorState').style.display = 'block';
+        document.getElementById('errorMessage').textContent = message;
+      }
+
+      // Build download report
+      function buildReport() {
+        if (!fireInfo || !predictionData) {
+          return "Report data not available.";
+        }
+
+        const probability = Math.round(predictionData.reburn_probability * 100);
+        const confidence = Math.round(predictionData.confidence * 100);
+
+        const reportLines = [
+          "TerraNova – Reburn Risk Analysis Report",
+          "====================================================",
+          "",
+          `Fire: ${fireInfo.name || 'Unknown'}`,
+          `Fire ID: ${fireInfo.id}`,
+          `State: ${fireInfo.state || 'N/A'}`,
+          `Year: ${fireInfo.year || fireInfo.start_date?.split('-')[0] || 'N/A'}`,
+          `Acres: ${fireInfo.acres ? fireInfo.acres.toLocaleString() : 'N/A'}`,
+          "",
+          "REBURN RISK PREDICTION",
+          "----------------------",
+          `Risk Level: ${predictionData.risk_level}`,
+          `Reburn Probability: ${probability}%`,
+          `Prediction: ${predictionData.reburn_prediction ? 'Will Reburn' : 'No Reburn'}`,
+          `Confidence: ${confidence}%`,
+          `Model Version: ${predictionData.model_version || 'N/A'}`,
+          "",
+          "FEATURE VALUES",
+          "---------------",
+        ];
+
+        if (predictionData.features_used) {
+          const featureLabels = {
+            elevation_m: 'Elevation (m)',
+            avg_temp_c: 'Average Temperature (°C)',
+            soil_moisture_pct: 'Soil Moisture (%)',
+            gw_depth_ft: 'Groundwater Depth (ft)',
+            ph_val: 'pH Value',
+            precip_mm: 'Precipitation (mm)',
+            land_burned_frequency: 'Land Burned Frequency ⭐',
+            state: 'State'
+          };
+
+          Object.entries(predictionData.features_used).forEach(([key, value]) => {
+            if (featureLabels[key]) {
+              reportLines.push(`  ${featureLabels[key]}: ${value}`);
+            }
+          });
+        }
+
+        reportLines.push(
+          "",
+          `Report Generated: ${new Date().toISOString()}`,
+          "",
+          "NOTE: This report is generated using a Random Forest classifier trained on historical fire data."
+        );
+
+        return reportLines.join("\n");
+      }
+
+      // Initialize page
+      async function init() {
+        const fireId = getFireIdFromUrl();
+
+        if (!fireId) {
+          showError('No fire ID provided. Please visit this page with a fire ID parameter, e.g., reburn-analysis.html?fireId=ca3617411872220040812');
+          return;
+        }
+
+        try {
+          // Fetch data in parallel
+          [fireInfo, predictionData] = await Promise.all([
+            fetchFireInfo(fireId),
+            fetchReburnPrediction(fireId)
+          ]);
+
+          // Hide loading, show content
+          document.getElementById('loadingState').style.display = 'none';
+          document.getElementById('analysisGrid').style.display = 'grid';
+          
+          // Update UI
+          updateUI();
+
+        } catch (error) {
+          console.error('Initialization error:', error);
+          showError(error.message || 'Failed to load analysis data. Please ensure the backend API is running and the fire ID is valid.');
+        }
+      }
+
+      // Download report handler
+      document.getElementById('downloadReportBtn').addEventListener('click', () => {
+        const reportText = buildReport();
+        const blob = new Blob([reportText], { type: 'text/plain' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `terranova_reburn_analysis_${fireInfo?.id || 'report'}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        URL.revokeObjectURL(url);
+      });
+
+      // Initialize on page load
+      init();
+    </script>
+  </body>
+</html>

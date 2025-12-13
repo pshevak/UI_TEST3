@@ -6,3 +6,8 @@ rasterio
 pillow
 numpy
 requests
+pandas
+scikit-learn
+joblib
+matplotlib
+seaborn

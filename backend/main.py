@@ -7,12 +7,12 @@ import json
 import logging
 import os
 import random
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 import time
 import requests
-from typing import Any, Dict, List
 
 import httpx
 import numpy as np
@@ -28,11 +28,27 @@ from rasterio.transform import from_origin
 
 logger = logging.getLogger("uvicorn.error")
 
-
-
+# Add reburn module to path for imports
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.normpath(os.path.join(BACKEND_DIR, ".."))
-DATA_ROOT = os.path.join(PROJECT_ROOT, "DATA")
+REBURN_DIR = os.path.join(PROJECT_ROOT, "reburn")
+if REBURN_DIR not in sys.path:
+    sys.path.insert(0, REBURN_DIR)
+
+# Import reburn prediction functions (optional - gracefully handle if not available)
+try:
+    from model_reburn import predict_reburn_risk, predict_reburn_risk_from_features
+    REBURN_MODEL_AVAILABLE = True
+    logger.info("Reburn prediction model loaded successfully")
+except ImportError as e:
+    REBURN_MODEL_AVAILABLE = False
+    logger.warning(f"Reburn prediction model not available: {e}")
+except FileNotFoundError as e:
+    REBURN_MODEL_AVAILABLE = False
+    logger.warning(f"Reburn model files not found: {e}")
+
+# Data paths
+DATA_ROOT = os.path.join(PROJECT_ROOT, "CA_data")
 
 
 app = FastAPI(title="TerraNova Demo API", version="0.2.0")
@@ -424,13 +440,30 @@ def format_stats(fire: Dict) -> Dict:
   condition = "Sunny"
   weather = f"{temp_f}°F, {condition}"
 
-  risk_levels = ["High", "Medium", "Low"]
-  # If land_burned_frequency provided, skew risk
-  freq = raw.get("land_burned_frequency", 0)
-  if freq and freq > 0:
-    reburn_risk = "High" if freq > 1 else "Medium"
+  # Try to get real reburn risk prediction from ML model
+  reburn_risk = "Medium"  # Default fallback
+  if REBURN_MODEL_AVAILABLE:
+    try:
+      fire_id = fire.get("id")
+      if fire_id:
+        prediction = predict_reburn_risk(fire_id, return_confidence=True)
+        reburn_risk = prediction["risk_level"]
+    except (ValueError, FileNotFoundError):
+      # Fire not in dataset or model not available - use fallback based on land_burned_frequency
+      freq = raw.get("land_burned_frequency", 0)
+      if freq and freq > 0:
+        reburn_risk = "High" if freq > 1 else "Medium"
+      else:
+        reburn_risk = "Low"
+    except Exception as e:
+      logger.warning(f"Error predicting reburn risk for {fire.get('id')}: {e}")
   else:
-    reburn_risk = "Low"
+    # Fallback to heuristic based on land_burned_frequency
+    freq = raw.get("land_burned_frequency", 0)
+    if freq and freq > 0:
+      reburn_risk = "High" if freq > 1 else "Medium"
+    else:
+      reburn_risk = "Low"
 
   incidents = raw.get("incidents") or random.randint(3, 8)
   updated = f"{fire.get('region', fire.get('state', ''))} · Updated {random.randint(15, 80)} mins ago"
@@ -471,38 +504,51 @@ def _refresh_fires_cache(force: bool = False) -> None:
   if (not force) and (now - FIRES_CACHE["last_refresh"] < CACHE_TTL_SECONDS):
     return
 
-  resp = requests.get(CALFIRE_ALL_URL, timeout=15)
-  resp.raise_for_status()
+  try:
+    resp = requests.get(CALFIRE_ALL_URL, timeout=15)
+    resp.raise_for_status()
 
-  raw = resp.json()
-  normalized = []
-  for x in raw:
-    lat, lng = x.get("Latitude"), x.get("Longitude")
-    if lat is None or lng is None:
-      continue
-    normalized.append(_normalize_calfire_incident(x))
+    raw = resp.json()
+    normalized = []
+    for x in raw:
+      lat, lng = x.get("Latitude"), x.get("Longitude")
+      if lat is None or lng is None:
+        continue
+      normalized.append(_normalize_calfire_incident(x))
 
-  # Sort “most recent first”: updated desc (fallback to start_date)
-  normalized.sort(
-    key=lambda f: (f.get("updated") or "", f.get("start_date") or ""),
-    reverse=True
-  )
+    # Sort "most recent first": updated desc (fallback to start_date)
+    normalized.sort(
+      key=lambda f: (f.get("updated") or "", f.get("start_date") or ""),
+      reverse=True
+    )
 
-  FIRES_CACHE["data"] = normalized
-  FIRES_CACHE["last_refresh"] = now
+    FIRES_CACHE["data"] = normalized
+    FIRES_CACHE["last_refresh"] = now
+  except Exception as e:
+    logger.warning(f"Failed to refresh fires cache from external API: {e}")
+    # Don't update cache on failure, will use existing data or fallback to local catalog
 
 
 @app.get("/api/fires")
 async def list_fires(
   state: Optional[str] = Query(None, description="Filter by state code (e.g., CA, OR)"),
   year: Optional[int] = Query(None, description="Filter by year"),
+  source: Optional[str] = Query(None, description="Data source: 'local' for local catalog, 'live' for external API, default uses local"),
 ):
   """
   Returns list of fires, optionally filtered by state and year.
   Results are sorted by most recent first.
+  
+  By default uses the local fire catalog (data/fires_master.json).
+  Pass source=live to fetch from external CAL FIRE API.
   """
-  _refresh_fires_cache()
-  filtered_fires = list(FIRES_CACHE["data"])  # copy
+  # Use local catalog by default, external API only if explicitly requested
+  if source == "live":
+    _refresh_fires_cache()
+    filtered_fires = list(FIRES_CACHE["data"])
+  else:
+    # Use local fire catalog from data/fires_master.json
+    filtered_fires = list(FIRE_CATALOG)
 
   # Apply filters
   if state:
@@ -515,29 +561,24 @@ async def list_fires(
       if f.get("start_date") and int(str(f["start_date"]).split("-")[0]) == year
     ]
 
-  return filtered_fires
-
-  
-  # Sort by year descending (newest first), then by date within same year
+  # Sort by year descending (newest first)
   def get_sort_key(fire: Dict) -> tuple:
     date_str = fire.get("start_date", "") or ""
     if date_str:
       try:
-        # Extract year, month, day for proper sorting
         parts = date_str.split("-")
         if len(parts) >= 3:
-          year = int(parts[0])
-          month = int(parts[1])
-          day = int(parts[2])
-          # Return tuple for sorting: (-year, -month, -day) for descending order
-          return (-year, -month, -day)
+          y = int(parts[0])
+          m = int(parts[1])
+          d = int(parts[2])
+          return (-y, -m, -d)
       except (ValueError, IndexError):
         pass
-    return (0, 0, 0)  # Put fires without dates at the end
-  
-  sorted_fires = sorted(filtered_fires, key=get_sort_key)
-  
-  return {"fires": sorted_fires}
+    return (0, 0, 0)
+
+  filtered_fires = sorted(filtered_fires, key=get_sort_key)
+
+  return filtered_fires
 
 
 @app.get("/api/scenario")
@@ -888,6 +929,92 @@ async def get_best_next_steps_raster(fire_id: str):
   )
 
 
+@app.get("/api/predict-reburn-risk")
+async def predict_reburn_risk_endpoint(
+  fireId: Optional[str] = Query(None, description="Fire ID to look up in dataset (e.g., 'ca3617411872220040812')"),
+  elevation_m: Optional[float] = Query(None, description="Elevation in meters"),
+  avg_temp_c: Optional[float] = Query(None, description="Average temperature in Celsius"),
+  soil_moisture_pct: Optional[float] = Query(None, description="Soil moisture percentage"),
+  gw_depth_ft: Optional[float] = Query(None, description="Groundwater depth in feet"),
+  ph_val: Optional[float] = Query(None, description="pH value"),
+  precip_mm: Optional[float] = Query(None, description="Precipitation in mm"),
+  land_burned_frequency: Optional[int] = Query(None, description="Land burned frequency (integer)"),
+  state: Optional[str] = Query(None, description="State code (e.g., 'CA')"),
+):
+  """
+  Predict reburn risk for a fire.
+  
+  Two modes:
+  1. Lookup mode: Provide fireId to look up features from dataset
+  2. Direct input mode: Provide all feature values directly
+  
+  Returns prediction with probability, risk level, and confidence.
+  """
+  if not REBURN_MODEL_AVAILABLE:
+    raise HTTPException(
+      status_code=503,
+      detail="Reburn prediction model not available. Please ensure the model has been trained and model_reburn.py is accessible."
+    )
+  
+  try:
+    # Mode 1: Lookup by fireId
+    if fireId:
+      prediction = predict_reburn_risk(fireId, return_confidence=True)
+      return {
+        **prediction,
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+      }
+    
+    # Mode 2: Direct feature input
+    # Check if all required features are provided
+    required_features = {
+      "elevation_m": elevation_m,
+      "avg_temp_c": avg_temp_c,
+      "soil_moisture_pct": soil_moisture_pct,
+      "gw_depth_ft": gw_depth_ft,
+      "ph_val": ph_val,
+      "precip_mm": precip_mm,
+      "land_burned_frequency": land_burned_frequency,
+      "state": state,
+    }
+    
+    missing = [k for k, v in required_features.items() if v is None]
+    if missing:
+      raise HTTPException(
+        status_code=400,
+        detail=f"Missing required features for direct input mode: {', '.join(missing)}. "
+               f"Either provide 'fireId' for lookup mode, or provide all feature values."
+      )
+    
+    features = {
+      "elevation_m": float(elevation_m),
+      "avg_temp_c": float(avg_temp_c),
+      "soil_moisture_pct": float(soil_moisture_pct),
+      "gw_depth_ft": float(gw_depth_ft),
+      "ph_val": float(ph_val),
+      "precip_mm": float(precip_mm),
+      "land_burned_frequency": int(land_burned_frequency),
+      "state": str(state),
+    }
+    
+    prediction = predict_reburn_risk_from_features(features, return_confidence=True)
+    return {
+      **prediction,
+      "generatedAt": datetime.now(timezone.utc).isoformat(),
+    }
+    
+  except ValueError as e:
+    raise HTTPException(status_code=404, detail=str(e))
+  except FileNotFoundError as e:
+    raise HTTPException(
+      status_code=503,
+      detail="Model or dataset not available. Please ensure the model has been trained."
+    )
+  except Exception as e:
+    logger.exception(f"Prediction error for fireId={fireId}")
+    raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
+
+
 @app.get("/api/health")
 async def health_check():
-  return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+  return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat(), "reburn_model": REBURN_MODEL_AVAILABLE}

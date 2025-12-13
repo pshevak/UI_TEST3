@@ -78,6 +78,9 @@ const state = {
   selectedYear: null,
 };
 
+// Expose state globally for external access (e.g., reburn analysis navigation)
+window.state = state;
+
 // Initialize year dropdown (derived from loaded fire catalog when available)
 const initializeYearDropdown = (years = null) => {
   if (!els.yearSelect) return;
