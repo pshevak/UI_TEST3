@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import glob
 import io
+import json
 import logging
 import os
 import random
@@ -40,110 +41,64 @@ app.add_middleware(
 )
 
 
-FIRE_CATALOG: List[Dict] = [
-  {
-    "id": "camp-fire-2018",
-    "name": "Camp Fire",
-    "state": "CA",
-    "lat": 39.73,
-    "lng": -121.6,
-    "acres": 153_336,
-    "start_date": "2018-11-08",
-    "cause": "Electrical",
-    "summary": "Largest loss of life in CA wildfire history; Paradise community heavily impacted.",
-    "perimeter_radius": 25000,
-    "region": "Paradise & Magalia",
-    "zipcode": "95969",
-  },
-  {
-    "id": "dixie-fire-2021",
-    "name": "Dixie Fire",
-    "state": "CA",
-    "lat": 40.18,
-    "lng": -121.23,
-    "acres": 963_309,
-    "start_date": "2021-07-13",
-    "cause": "Powerline",
-    "summary": "Second-largest CA wildfire; complex terrain through Plumas and Lassen counties.",
-    "perimeter_radius": 36000,
-    "region": "Feather River Watershed",
-    "zipcode": "95954",
-  },
-  {
-    "id": "bootleg-fire-2021",
-    "name": "Bootleg Fire",
-    "state": "OR",
-    "lat": 42.56,
-    "lng": -121.5,
-    "acres": 413_765,
-    "start_date": "2021-07-06",
-    "cause": "Lightning",
-    "summary": "Major fire in southern Oregon; threatened critical transmission corridors.",
-    "perimeter_radius": 28000,
-    "region": "Fremont-Winema NF",
-    "zipcode": "97620",
-  },
-  {
-    "id": "maui-fire-2023",
-    "name": "Lahaina Wildfire",
-    "state": "HI",
-    "lat": 20.88,
-    "lng": -156.68,
-    "acres": 6_700,
-    "start_date": "2023-08-08",
-    "cause": "Under investigation",
-    "summary": "Urban-interface fire on Maui with catastrophic impacts to Lahaina town.",
-    "perimeter_radius": 12000,
-    "region": "West Maui",
-    "zipcode": "96761",
-  },
-  {
-    "id": "hurricane-fire-2024",
-    "name": "Hurricane Fire",
-    "state": "CA",
-    "lat": 35.1940,
-    "lng": -119.6544,
-    "acres": 13_488,
-    "start_date": "2024-07-13",
-    "cause": "Under investigation",
-    "summary": "2024 wildfire in California, mapped by MTBS with Sentinel-2A imagery (single-scene demo).",
-    "perimeter_radius": 15000,
-    "region": "California",
-    "zipcode": "93240",
-    "mtbs_event_id": "ca3519911969620240713",
-  },
-  {
-    "id": "canyon-fire-2016",
-    "name": "Canyon Fire",
-    "state": "CA",
-    "lat": 34.597,
-    "lng": -120.584,
-    "acres": 12_749,
-    "start_date": "2016-09-18",
-    "cause": "Under investigation",
-    "summary": "2016 wildfire in California, mapped by MTBS with Landsat 8 OLI imagery (Extended assessment).",
-    "perimeter_radius": 14000,
-    "region": "California",
-    "zipcode": "93436",
-    "mtbs_event_id": "ca3472012055020160918",
-  },
-]
-
-FIRE_LOOKUP: Dict[str, Dict] = {fire["id"]: fire for fire in FIRE_CATALOG}
+FIRE_DATA_PATH = Path(PROJECT_ROOT) / "fires_master_with_names_and_acres.json"
 MODEL_SERVICE_URL = os.environ.get("MODEL_SERVICE_URL", "http://localhost:8002/predict")
 
-# Maps fire IDs to pre/post raster paths for segmentation.
-FIRE_RASTER_MAP: Dict[str, Dict[str, Path]] = {
-  "canyon-fire-2016": {
-    "pre": Path("CA_data/ca3472012055020160918/ca3472012055020160918_20160613_l8_refl.tif"),
-    "post": Path("CA_data/ca3472012055020160918/ca3472012055020160918_20170616_l8_refl.tif"),
-  },
-  "hurricane-fire-2024": {
-    # Only post-fire provided; reuse for pre to satisfy stack builder.
-    "pre": Path("CA_data/ca3519911969620240713/ca3519911969620240713_20240729_S2A_refl.tif"),
-    "post": Path("CA_data/ca3519911969620240713/ca3519911969620240713_20240729_S2A_refl.tif"),
-  },
-}
+
+def load_fire_catalog() -> List[Dict]:
+  with open(FIRE_DATA_PATH) as f:
+    entries = json.load(f)
+
+  catalog = []
+  for entry in entries:
+    fire_id = entry.get("fire_id") or entry.get("id")
+    name = entry.get("fire_name") or entry.get("name") or fire_id
+    state = entry.get("state", "CA")
+    acres_val = entry.get("acres")
+    acres = acres_val if isinstance(acres_val, (int, float)) else 0
+    start_date = entry.get("date") or ""
+    lat = entry.get("lat") or 0.0
+    lng = entry.get("lng") or 0.0
+    summary = entry.get("summary") or f"{name} ({state})"
+    catalog.append({
+      "id": fire_id,
+      "name": name,
+      "state": state,
+      "lat": lat,
+      "lng": lng,
+      "acres": acres,
+      "start_date": start_date,
+      "cause": entry.get("cause", "Unknown"),
+      "summary": summary,
+      "perimeter_radius": entry.get("perimeter_radius", 15000),
+      "region": entry.get("region", state),
+      "zipcode": entry.get("zipcode", ""),
+      "mtbs_event_id": entry.get("mtbs_event_id", fire_id),
+      "_raw": entry,
+    })
+  return catalog
+
+
+def build_raster_map(catalog: List[Dict]) -> Dict[str, Dict[str, Path]]:
+  mapping: Dict[str, Dict[str, Path]] = {}
+  for fire in catalog:
+    entry = fire.get("_raw", {})
+    fire_id = fire["id"]
+    post_name = entry.get("post_fire_file")
+    pre_name = entry.get("pre_fire_file") or post_name
+    if not post_name:
+      continue
+    base = Path("CA_data") / fire_id
+    mapping[fire_id] = {
+      "pre": base / pre_name,
+      "post": base / post_name,
+    }
+  return mapping
+
+
+FIRE_CATALOG: List[Dict] = load_fire_catalog()
+FIRE_LOOKUP: Dict[str, Dict] = {fire["id"]: fire for fire in FIRE_CATALOG}
+FIRE_RASTER_MAP: Dict[str, Dict[str, Path]] = build_raster_map(FIRE_CATALOG)
 
 TIMELINE_STAGES = [
   {"value": 0, "label": "Pre-fire baseline", "description": "Vegetation health before ignition", "days_from_ignition": -30},
@@ -384,21 +339,22 @@ def generate_insights(fire: Dict, timeline_meta: Dict) -> List[Dict]:
 
 
 def format_stats(fire: Dict) -> Dict:
-  # Weather conditions (dummy data for now)
-  temps = [68, 72, 75, 78, 82, 85]
-  conditions = ["Clear", "Partly Cloudy", "Sunny", "Windy"]
-  temp = random.choice(temps)
-  condition = random.choice(conditions)
-  weather = f"{temp}°F, {condition}"
-  
-  # Reburn risk (dummy data - will be calculated later based on burn history)
-  # For now, randomly assign High/Medium/Low
+  raw = fire.get("_raw", {})
+  temp_c = raw.get("avg_temp_c")
+  temp_f = round((temp_c * 9/5) + 32) if isinstance(temp_c, (int, float)) else random.choice([68, 72, 75, 78])
+  condition = "Sunny"
+  weather = f"{temp_f}°F, {condition}"
+
   risk_levels = ["High", "Medium", "Low"]
-  risk_weights = [0.3, 0.5, 0.2]  # 30% High, 50% Medium, 20% Low
-  reburn_risk = random.choices(risk_levels, weights=risk_weights)[0]
-  
-  incidents = random.randint(3, 8)
-  updated = f"{fire['region']} · Updated {random.randint(15, 80)} mins ago"
+  # If land_burned_frequency provided, skew risk
+  freq = raw.get("land_burned_frequency", 0)
+  if freq and freq > 0:
+    reburn_risk = "High" if freq > 1 else "Medium"
+  else:
+    reburn_risk = "Low"
+
+  incidents = raw.get("incidents") or random.randint(3, 8)
+  updated = f"{fire.get('region', fire.get('state', ''))} · Updated {random.randint(15, 80)} mins ago"
   return {
     "weather": weather,
     "reburnRisk": reburn_risk,
