@@ -172,7 +172,6 @@ const els = {
   mapHeadline: document.querySelector('[data-map-headline]'),
   mapSubhead: document.querySelector('[data-map-subhead]'),
   priorityContainer: document.querySelector('[data-priorities]'),
-  insightContainer: document.querySelector('[data-insights]'),
   nextSteps: document.querySelector('[data-next-steps]'),
   nextStepsContent: document.querySelector('[data-next-steps-content]'),
   mapTip: document.querySelector('[data-map-tip]'),
@@ -699,32 +698,6 @@ const renderHotspots = (markers = []) => {
   });
 };
 
-const renderInsights = (insights = []) => {
-  if (!els.insightContainer) return;
-  if (!insights.length) {
-    els.insightContainer.innerHTML = `
-      <article>
-        <p class="rail-label">No insights</p>
-        <strong>All clear for now.</strong>
-        <span>Adjust the sliders to refresh the model.</span>
-      </article>
-    `;
-    return;
-  }
-
-  els.insightContainer.innerHTML = insights
-    .map(
-      (insight) => `
-        <article>
-          <p class="rail-label">${insight.category}</p>
-          <strong>${insight.title}</strong>
-          <span>${insight.detail}</span>
-        </article>
-      `,
-    )
-    .join('');
-};
-
 const renderPriorities = (priorities = []) => {
   if (!els.priorityContainer) return;
   if (!priorities.length) {
@@ -988,7 +961,6 @@ const renderScenario = async (scenario) => {
   await renderLayers(scenario.layers);
   renderHotspots(scenario.markers);
   renderPriorities(scenario.priorities);
-  renderInsights(scenario.insights);
   renderNextSteps(scenario.nextSteps);
   updateStats(scenario.stats);
   updateMapTip(scenario.mapTip);

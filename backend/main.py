@@ -583,7 +583,6 @@ async def get_scenario(
     "markers": hotspots,
     "priorities": priorities_summary,
     "nextSteps": next_steps,
-    "insights": insights,
     "mapTip": f"{timeline_meta['label']} · {timeline_meta['description']}",
     "generatedAt": datetime.now(timezone.utc).isoformat(),
   }
