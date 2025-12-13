@@ -276,160 +276,126 @@ const renderFirePins = (fires) => {
   });
 };
 
-// Function to render MTBS burn severity raster
-const renderBurnSeverityRaster = async (fireId) => {
-  // Check if georaster libraries are loaded
-  const parseGeorasterFn = window.parseGeoraster || (window.georaster && window.georaster.parseGeoraster);
-  const GeoRasterLayerClass = window.GeoRasterLayer || (window.georasterLayerForLeaflet && window.georasterLayerForLeaflet.GeoRasterLayer);
-  
-  if (!parseGeorasterFn || !GeoRasterLayerClass) {
-    console.error('Georaster libraries not loaded. Available globals:', Object.keys(window).filter(k => k.toLowerCase().includes('georaster')));
-    console.error('parseGeoraster available:', !!parseGeorasterFn);
-    console.error('GeoRasterLayer available:', !!GeoRasterLayerClass);
-    return;
-  }
-  
-  // Define MTBS Albers Conical Equal Area projection (if proj4 is available)
-  // MTBS uses: Albers Conical Equal Area with standard parallels 29.5 and 45.5, central meridian -96.0
-  if (typeof proj4 !== 'undefined') {
-    // EPSG:5070 is USA_Contiguous_Albers_Equal_Area_Conic
-    // But MTBS uses custom parameters, so we'll define it
-    try {
-      proj4.defs('ESRI:102003', '+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23.0 +lon_0=-96.0 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs');
-      console.log('MTBS Albers projection defined');
-    } catch (e) {
-      console.warn('Could not define projection:', e);
+// Convert bounds+CRS from API to Leaflet LatLngBounds
+const toLatLngBounds = (bounds, crs) => {
+  if (!Array.isArray(bounds) || bounds.length !== 2) return null;
+  const [minX, minY] = bounds[0] || [];
+  const [maxX, maxY] = bounds[1] || [];
+  if ([minX, minY, maxX, maxY].some(v => typeof v !== 'number')) return null;
+  console.log('Segmentation bounds/raw:', { bounds, crs, minX, minY, maxX, maxY });
+
+  const project = (x, y) => {
+    if (crs && typeof proj4 !== 'undefined' && crs !== 'EPSG:4326' && crs !== 'EPSG:3857') {
+      try {
+        const [lon, lat] = proj4(crs, 'WGS84', [x, y]);
+        return [lat, lon];
+      } catch (e) {
+        console.warn('Projection transform failed, falling back to raw coords', e);
+      }
     }
-  }
-  
-  // Clear existing raster layer - AGGRESSIVE CLEARING
+    return [y, x]; // assume coords are lon/lat already
+  };
+
+  const sw = project(minX, minY);
+  const ne = project(maxX, maxY);
+  console.log('Segmentation bounds/latlng:', { sw, ne });
+  return L.latLngBounds([sw, ne]);
+};
+
+// Define common Albers projection used by MTBS rasters/segmentations
+const ensureProjectionDefs = () => {
+  if (typeof proj4 === 'undefined') return;
+  const albers = '+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23 +lon_0=-96 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs';
+  const codes = ['ESRI:102039', '102039', 'ESRI:102003', '102003', 'EPSG:5070', '32767', 'EPSG:32767'];
+  codes.forEach((code) => {
+    try {
+      if (!proj4.defs(code)) {
+        proj4.defs(code, albers);
+      }
+    } catch (e) {
+      // Ignore if already defined
+    }
+  });
+};
+
+// Function to render burn severity segmentation overlay from backend (base64 PNG)
+const renderBurnSeverityRaster = async (fireId) => {
+  // Clear existing raster overlay
   if (rasterLayers.burnSeverity) {
     try {
-      // Remove from map directly if it's there
       if (map.hasLayer(rasterLayers.burnSeverity)) {
         map.removeLayer(rasterLayers.burnSeverity);
       }
-      // Remove from group
       if (featureLayerGroups.burnSeverity.hasLayer(rasterLayers.burnSeverity)) {
         featureLayerGroups.burnSeverity.removeLayer(rasterLayers.burnSeverity);
       }
     } catch (e) {
-      console.warn('Error clearing burn severity raster:', e);
+      console.warn('Error clearing burn severity overlay:', e);
     }
     rasterLayers.burnSeverity = null;
   }
-  
-  // Clear any existing circles and all layers from group
+
   featureLayerGroups.burnSeverity.clearLayers();
-  
-  // Ensure group is removed from map before adding new layer
-  if (map.hasLayer(featureLayerGroups.burnSeverity)) {
-    map.removeLayer(featureLayerGroups.burnSeverity);
+
+  // Use GeoRasterLayer to preserve georeferencing from the GeoTIFF mask
+  const parseGeorasterFn = window.parseGeoraster || (window.georaster && window.georaster.parseGeoraster);
+  const GeoRasterLayerClass = window.GeoRasterLayer || (window.georasterLayerForLeaflet && window.georasterLayerForLeaflet.GeoRasterLayer);
+  if (!parseGeorasterFn || !GeoRasterLayerClass) {
+    console.error('Georaster libraries not loaded for segmentation overlay');
+    return;
   }
-  
+
   try {
-    console.log('Loading MTBS burn severity raster for fire:', fireId);
-    // Load GeoTIFF from backend
-    const response = await fetch(`${API_BASE_URL}/api/burn-severity/${fireId}.tif`);
-    
+    ensureProjectionDefs();
+    const response = await fetch(`${API_BASE_URL}/api/segment-mask/${encodeURIComponent(fireId)}.tif`);
     if (!response.ok) {
-      console.warn('MTBS raster not available (status:', response.status, '), using fallback circles');
-      return; // Will fall back to circles
+      console.warn('Segmentation mask GeoTIFF not available (status:', response.status, ')');
+      return;
     }
-    
     const arrayBuffer = await response.arrayBuffer();
-    console.log('GeoTIFF loaded, size:', arrayBuffer.byteLength, 'bytes');
-    
-    // IMPORTANT: Define MTBS projection BEFORE parsing georaster
-    // GeoRasterLayer needs the projection to be defined in proj4 during initialization
-    if (typeof proj4 !== 'undefined') {
-      // MTBS Albers Conical Equal Area projection definition
-      // From metadata: standard parallels 29.5 and 45.5, central meridian -96.0, latitude of origin 23.0
-      const mtbsAlbersDef = '+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=23.0 +lon_0=-96.0 +x_0=0 +y_0=0 +datum=NAD83 +units=m +no_defs';
-      
-      // Define in multiple formats that GeoRasterLayer might look for
-      const projectionCodes = [
-        '32767',           // Numeric code as string (common for user-defined)
-        'EPSG:32767',      // EPSG format
-        'EPSG:5070',       // USA Contiguous Albers (similar parameters)
-        'ESRI:102003',     // ESRI Albers code
-        'MTBS_ALBERS'      // Custom name
-      ];
-      
-      projectionCodes.forEach(code => {
-        if (!proj4.defs(code)) {
-          proj4.defs(code, mtbsAlbersDef);
-          console.log(`Defined projection: ${code}`);
-        }
-      });
-    }
-    
-    // Now parse the georaster (GeoRasterLayer will use the projection we just defined)
+    console.log('Segmentation GeoTIFF loaded, bytes:', arrayBuffer.byteLength);
+
     const georaster = await parseGeorasterFn(arrayBuffer);
-    console.log('Georaster parsed successfully:', {
+    if (georaster.projection && typeof georaster.projection === 'number') {
+      georaster.projection = String(georaster.projection);
+    }
+    console.log('Segmentation GeoTIFF parsed:', {
       width: georaster.width,
       height: georaster.height,
-      pixelWidth: georaster.pixelWidth,
-      pixelHeight: georaster.pixelHeight,
       projection: georaster.projection,
-      noDataValue: georaster.noDataValue
+      noDataValue: georaster.noDataValue,
     });
-    
-    // If georaster has a numeric projection code, convert it to string format
-    // GeoRasterLayer expects projection codes as strings that proj4 can recognize
-    if (georaster.projection && typeof georaster.projection === 'number') {
-      const projCode = georaster.projection;
-      console.log('Numeric projection code detected:', projCode);
-      // Convert to string format - GeoRasterLayer will look for this in proj4
-      // We've already defined it as both "32767" and "EPSG:32767"
-      georaster.projection = String(projCode);
-      console.log('Converted projection to string:', georaster.projection);
-    } else if (georaster.projection && typeof georaster.projection === 'string') {
-      console.log('Projection code is already a string:', georaster.projection);
-    }
-    
-    // MTBS 6-Class Burn Severity Color Map
-    const mtbsColorMap = {
-      0: [255, 255, 255, 0],      // Unburned - transparent
-      1: [0, 100, 0, 200],        // Low severity - dark green
-      2: [144, 238, 144, 200],    // Low-Moderate - light green
-      3: [255, 255, 0, 200],      // Moderate - yellow
-      4: [255, 165, 0, 200],      // High - orange
-      5: [255, 0, 0, 200],        // High (increased) - red
+
+    // Color map with class 0 transparent
+    const colorMap = {
+      0: [255, 255, 255, 0],
+      1: [0, 100, 0, 200],
+      2: [144, 238, 144, 200],
+      3: [255, 255, 0, 200],
+      4: [255, 165, 0, 200],
+      5: [255, 0, 0, 200],
     };
-    
-    // Create raster layer with exact pixel mapping
-    // GeoRasterLayer will automatically handle projection conversion using proj4
-    // It reads projection from georaster and converts to Web Mercator (Leaflet's default)
+
     const rasterLayer = new GeoRasterLayerClass({
-      georaster: georaster,
-      opacity: 0.7,  // Semi-transparent overlay
+      georaster,
+      opacity: 0.85,
       pixelValuesToColorFn: (values) => {
-        const severity = Math.round(values[0]); // Get severity value (0-5)
-        return mtbsColorMap[severity] || [255, 255, 255, 0];
+        const cls = Math.round(values[0]);
+        return colorMap[cls] || [255, 255, 255, 0];
       },
-      resolution: 256,  // Higher = more detail
-      updateWhenIdle: true,  // Update when idle to prevent tile caching issues
-      keepBuffer: 0  // Don't keep buffer - ensures clean switching
-      // Note: GeoRasterLayer automatically reads projection from georaster
-      // and uses proj4 to convert to Web Mercator for Leaflet
+      resolution: 256,
+      updateWhenIdle: true,
+      keepBuffer: 0,
     });
-    
+
     rasterLayer.addTo(featureLayerGroups.burnSeverity);
     rasterLayers.burnSeverity = rasterLayer;
-    
-    console.log('MTBS burn severity raster layer added to map successfully');
-    
-    // Force map refresh to ensure new layer is visible at all zoom levels
-    map.invalidateSize();
-    
-    // Ensure layer is visible
+    console.log('Segmentation raster layer added to map');
+
     syncLayerVisibility();
-    
+    map.invalidateSize();
   } catch (error) {
-    console.error('Failed to load MTBS burn severity raster:', error);
-    console.error('Error details:', error.message, error.stack);
-    // Fallback: will use circles from backend
+    console.error('Failed to load segmentation overlay:', error);
   }
 };
 
