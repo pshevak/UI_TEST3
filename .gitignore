@@ -1,2 +1,5 @@
 #Test3
 .venv/
+*.pyc
+*.pth
+DATA

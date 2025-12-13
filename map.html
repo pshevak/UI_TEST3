@@ -80,13 +80,6 @@
             />
             <span>Burn severity</span>
           </label>
-          <label class="layer" data-tooltip="Reburn risk: Areas with elevated risk of subsequent fires based on burn history and fuel accumulation.">
-            <input
-              type="checkbox"
-              data-layer="reburnRisk"
-            />
-            <span>Reburn risk</span>
-          </label>
           <label class="layer" data-tooltip="Best next steps: Recommended priority areas for post-fire management and recovery actions.">
             <input
               type="checkbox"
@@ -94,57 +87,6 @@
             />
             <span>Best next steps</span>
           </label>
-        </section>
-
-        <section class="panel-block priorities">
-          <div class="block-header">
-            <p>Analysis priorities</p>
-            <span>Adjust sliders</span>
-          </div>
-          <div class="priority-controls">
-            <label class="priority-slider" data-tooltip="Community safety: Higher values bias the model toward protecting neighborhoods, hospitals, schools, and evacuation routes.">
-              <div class="priority-meta">
-                <span>Community safety</span>
-                <span data-priority-value="community">70%</span>
-              </div>
-              <input type="range" min="0" max="100" value="70" data-priority-slider="community" />
-            </label>
-            <label class="priority-slider" data-tooltip="Watershed health: Higher values shift focus to headwaters, drinking water sources, and sediment control.">
-              <div class="priority-meta">
-                <span>Watershed health</span>
-                <span data-priority-value="watershed">55%</span>
-              </div>
-              <input type="range" min="0" max="100" value="55" data-priority-slider="watershed" />
-            </label>
-            <label class="priority-slider" data-tooltip="Infrastructure readiness: Higher values prioritize keeping roads, power, communications, and utilities online.">
-              <div class="priority-meta">
-                <span>Infrastructure readiness</span>
-                <span data-priority-value="infrastructure">60%</span>
-              </div>
-              <input type="range" min="0" max="100" value="60" data-priority-slider="infrastructure" />
-            </label>
-          </div>
-          <div class="priorities-list" data-priorities>
-            <p class="muted small">Adjust a slider to see how the model changes course.</p>
-          </div>
-        </section>
-
-        <section class="panel-block">
-          <div class="block-header">
-            <p>Forecast stage</p>
-            <span data-forecast-label>Initial assessment (Day 7)</span>
-          </div>
-          <div class="slider timeline" data-tooltip="Drag to see how burn severity, watershed stress, and infrastructure exposure evolve from fire ignition through long-term recovery.">
-            <input type="range" min="0" max="4" value="2" data-forecast-slider />
-            <div class="slider-value" data-forecast-desc>First MTBS-inspired burn severity mapping</div>
-          </div>
-        </section>
-
-        <section class="legend">
-          <h2>Legend</h2>
-          <div class="legend-item"><span class="dot high"></span>High priority</div>
-          <div class="legend-item"><span class="dot medium"></span>Moderate priority</div>
-          <div class="legend-item"><span class="dot low"></span>Low priority</div>
         </section>
       </aside>
 
@@ -213,14 +155,6 @@
           </div>
         </section>
 
-        <div class="insight-rail" data-insights>
-          <article>
-            <p class="rail-label">Loading</p>
-            <strong>Fetching latest workflow insights…</strong>
-            <span>Powered by TerraNova demo API</span>
-          </article>
-        </div>
-        
         <section class="next-steps" data-next-steps>
           <div class="next-steps-content" data-next-steps-content>
             <h3>Next steps</h3>
@@ -248,7 +182,7 @@
     <script src="https://unpkg.com/proj4@2.9.0/dist/proj4.js"></script>
     <script src="https://unpkg.com/georaster@latest/dist/georaster.browser.bundle.min.js"></script>
     <script src="https://unpkg.com/georaster-layer-for-leaflet@latest/dist/v3/webpack/bundle/georaster-layer-for-leaflet.min.js"></script>
-    <script src="scripts/map.js"></script>
+    <script src="scripts/map.js?v=seg-overlay"></script>
         <script>
       // Clean up OAuth query params so the map UI remains tidy after Google redirects
       (() => {

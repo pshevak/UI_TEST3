@@ -1,23 +1,38 @@
 from __future__ import annotations
 
-import random
+import base64
 import glob
+import io
+import json
+import logging
 import os
+import random
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict, List, Optional
 import time
 import requests
 from typing import Any, Dict, List
 
-from fastapi import FastAPI, Query, HTTPException
+import httpx
+import numpy as np
+import rasterio
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
+from PIL import Image
+from rasterio.crs import CRS
+from rasterio.io import MemoryFile
+from rasterio.transform import from_origin
+
+
+logger = logging.getLogger("uvicorn.error")
 
 
 
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.normpath(os.path.join(BACKEND_DIR, ".."))
-DATA_ROOT = os.path.join(PROJECT_ROOT, "CA_data")
+DATA_ROOT = os.path.join(PROJECT_ROOT, "DATA")
 
 
 app = FastAPI(title="TerraNova Demo API", version="0.2.0")
@@ -38,96 +53,75 @@ FIRES_CACHE: Dict[str, Any] = {
 
 CACHE_TTL_SECONDS = 300  # 5 minutes
 
-FIRE_CATALOG: List[Dict] = [
-  {
-    "id": "camp-fire-2018",
-    "name": "Camp Fire",
-    "state": "CA",
-    "lat": 39.73,
-    "lng": -121.6,
-    "acres": 153_336,
-    "start_date": "2018-11-08",
-    "cause": "Electrical",
-    "summary": "Largest loss of life in CA wildfire history; Paradise community heavily impacted.",
-    "perimeter_radius": 25000,
-    "region": "Paradise & Magalia",
-    "zipcode": "95969",
-  },
-  {
-    "id": "dixie-fire-2021",
-    "name": "Dixie Fire",
-    "state": "CA",
-    "lat": 40.18,
-    "lng": -121.23,
-    "acres": 963_309,
-    "start_date": "2021-07-13",
-    "cause": "Powerline",
-    "summary": "Second-largest CA wildfire; complex terrain through Plumas and Lassen counties.",
-    "perimeter_radius": 36000,
-    "region": "Feather River Watershed",
-    "zipcode": "95954",
-  },
-  {
-    "id": "bootleg-fire-2021",
-    "name": "Bootleg Fire",
-    "state": "OR",
-    "lat": 42.56,
-    "lng": -121.5,
-    "acres": 413_765,
-    "start_date": "2021-07-06",
-    "cause": "Lightning",
-    "summary": "Major fire in southern Oregon; threatened critical transmission corridors.",
-    "perimeter_radius": 28000,
-    "region": "Fremont-Winema NF",
-    "zipcode": "97620",
-  },
-  {
-    "id": "maui-fire-2023",
-    "name": "Lahaina Wildfire",
-    "state": "HI",
-    "lat": 20.88,
-    "lng": -156.68,
-    "acres": 6_700,
-    "start_date": "2023-08-08",
-    "cause": "Under investigation",
-    "summary": "Urban-interface fire on Maui with catastrophic impacts to Lahaina town.",
-    "perimeter_radius": 12000,
-    "region": "West Maui",
-    "zipcode": "96761",
-  },
-  {
-    "id": "hurricane-fire-2024",
-    "name": "Hurricane Fire",
-    "state": "CA",
-    "lat": 35.195,
-    "lng": -119.656,
-    "acres": 13_488,
-    "start_date": "2024-07-13",
-    "cause": "Under investigation",
-    "summary": "2024 wildfire in California, mapped by MTBS with Sentinel-2A imagery.",
-    "perimeter_radius": 15000,
-    "region": "California",
-    "zipcode": "93240",
-    "mtbs_event_id": "ca3519911969620240713",
-  },
-  {
-    "id": "canyon-fire-2016",
-    "name": "Canyon Fire",
-    "state": "CA",
-    "lat": 34.597,
-    "lng": -120.584,
-    "acres": 12_749,
-    "start_date": "2016-09-18",
-    "cause": "Under investigation",
-    "summary": "2016 wildfire in California, mapped by MTBS with Landsat 8 OLI imagery (Extended assessment).",
-    "perimeter_radius": 14000,
-    "region": "California",
-    "zipcode": "93436",
-    "mtbs_event_id": "ca3472012055020160918",
-  },
-]
+FIRE_DATA_PATH = Path(PROJECT_ROOT) / "DATA" / "fires_master.json"
+MODEL_SERVICE_URL = os.environ.get("MODEL_SERVICE_URL", "http://localhost:8002/predict")
 
+
+def load_fire_catalog() -> List[Dict]:
+  with open(FIRE_DATA_PATH) as f:
+    entries = json.load(f)
+
+  catalog = []
+  for entry in entries:
+    fire_id = entry.get("fire_id") or entry.get("id")
+    name = entry.get("name") or entry.get("fire_name") or fire_id
+    state = entry.get("state", "CA")
+    acres_val = entry.get("acres")
+    acres = acres_val if isinstance(acres_val, (int, float)) else 0
+    start_date = entry.get("date") or ""
+    lat = entry.get("lat") or 0.0
+    lng = entry.get("lng") or 0.0
+    summary = entry.get("summary") or f"{name} ({state})"
+    catalog.append({
+      "id": fire_id,
+      "name": name,
+      "state": state,
+      "lat": lat,
+      "lng": lng,
+      "acres": acres,
+      "start_date": start_date,
+      "cause": entry.get("cause", "Unknown"),
+      "summary": summary,
+      "perimeter_radius": entry.get("perimeter_radius", 15000),
+      "region": entry.get("region", state),
+      "zipcode": entry.get("zipcode", ""),
+      "mtbs_event_id": entry.get("mtbs_event_id", fire_id),
+      "_raw": entry,
+    })
+  return catalog
+
+
+def build_raster_map(catalog: List[Dict]) -> Dict[str, Dict[str, Path]]:
+  mapping: Dict[str, Dict[str, Path]] = {}
+  for fire in catalog:
+    entry = fire.get("_raw", {})
+    fire_id = fire["id"]
+    post_name = entry.get("post_fire_file")
+    pre_name = entry.get("pre_fire_file") or post_name
+    if not post_name:
+      continue
+    base = Path("DATA") / "postfire_images"
+    pre_path = base / pre_name
+    post_path = base / post_name
+    # Fallback to legacy CA_data/<fire_id>/ if files not present in DATA/postfire_images
+    legacy_base = Path("CA_data") / fire_id
+    if not pre_path.is_file() and (legacy_base / pre_name).is_file():
+      pre_path = legacy_base / pre_name
+    if not post_path.is_file() and (legacy_base / post_name).is_file():
+      post_path = legacy_base / post_name
+    # If pre is missing but post exists, reuse post for pre to allow segmentation
+    if not pre_path.is_file() and post_path.is_file():
+      pre_path = post_path
+    mapping[fire_id] = {
+      "pre": pre_path,
+      "post": post_path,
+    }
+  return mapping
+
+
+FIRE_CATALOG: List[Dict] = load_fire_catalog()
 FIRE_LOOKUP: Dict[str, Dict] = {fire["id"]: fire for fire in FIRE_CATALOG}
+FIRE_RASTER_MAP: Dict[str, Dict[str, Path]] = build_raster_map(FIRE_CATALOG)
 
 TIMELINE_STAGES = [
   {"value": 0, "label": "Pre-fire baseline", "description": "Vegetation health before ignition", "days_from_ignition": -30},
@@ -140,6 +134,139 @@ TIMELINE_STAGES = [
 
 def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
   return max(low, min(high, value))
+
+
+def resolve_raster_paths(fire_id: str) -> Dict[str, Path]:
+  paths = FIRE_RASTER_MAP.get(fire_id)
+  if not paths:
+    raise HTTPException(status_code=404, detail=f"No rasters configured for fire {fire_id}")
+
+  resolved = {}
+  for key, path in paths.items():
+    full_path = path if path.is_absolute() else Path(PROJECT_ROOT) / path
+    if not full_path.is_file():
+      raise HTTPException(status_code=404, detail=f"Missing raster for fire {fire_id}: {full_path}")
+    resolved[key] = full_path
+  return resolved
+
+
+def build_pre_post_stack(fire_id: str) -> bytes:
+  """Load rasters, align shapes, and emit a GeoTIFF in-memory.
+  Default is 6-channel post-fire only to match the 6-channel checkpoint. Set
+  SEGMENTATION_CHANNELS=12 if you switch to a 12-channel model."""
+  paths = resolve_raster_paths(fire_id)
+  pre_path, post_path = paths["pre"], paths["post"]
+
+  def safe_read(ds: rasterio.io.DatasetReader, idxs):
+    """Read dataset window-by-window, filling zeros on read errors."""
+    count = len(idxs)
+    out = np.zeros((count, ds.height, ds.width), dtype=ds.dtypes[0])
+    for _, window in ds.block_windows(1):
+      try:
+        block = ds.read(indexes=idxs, window=window)
+      except Exception as exc:
+        logger.error("Read failed for %s window %s: %s", ds.name, window, exc)
+        block = np.zeros((count, window.height, window.width), dtype=ds.dtypes[0])
+      out[:, window.row_off:window.row_off+window.height, window.col_off:window.col_off+window.width] = block
+    return out
+
+  def _readable(ds, label: str):
+    try:
+      ds.read(1, window=((0, 1), (0, 1)))
+      return True
+    except Exception as exc:
+      logger.error("Unreadable %s raster for %s (%s): %s", label, fire_id, ds.name, exc)
+      raise HTTPException(status_code=500, detail=f"Unreadable {label} raster for {fire_id}: {exc}")
+
+  with rasterio.open(pre_path) as pre_ds, rasterio.open(post_path) as post_ds:
+    _readable(pre_ds, "pre")
+    _readable(post_ds, "post")
+    if pre_ds.count < 6 or post_ds.count < 6:
+      raise HTTPException(status_code=400, detail="Expected at least 6 bands in both pre and post rasters")
+
+    try:
+      pre_data = safe_read(pre_ds, list(range(1, 7)))
+    except Exception as exc:
+      logger.error("Failed reading pre-fire raster for %s: %s", fire_id, exc)
+      raise HTTPException(status_code=500, detail=f"Failed to read pre-fire raster for {fire_id}")
+    try:
+      post_data = safe_read(post_ds, list(range(1, 7)))
+    except Exception as exc:
+      logger.error("Failed reading post-fire raster for %s: %s", fire_id, exc)
+      raise HTTPException(status_code=500, detail=f"Failed to read post-fire raster for {fire_id}")
+
+    height = min(pre_data.shape[1], post_data.shape[1])
+    width = min(pre_data.shape[2], post_data.shape[2])
+    pre_data = pre_data[:, :height, :width]
+    post_data = post_data[:, :height, :width]
+
+    meta = pre_ds.meta.copy()
+    # Default to 6-channel post-fire only, matching the current checkpoint.
+    use_post_only = os.environ.get("SEGMENTATION_CHANNELS", "6").lower() == "6"
+    if use_post_only:
+      stacked = post_data
+      meta.update({"count": 6, "height": height, "width": width, "dtype": stacked.dtype})
+    else:
+      stacked = np.concatenate([pre_data, post_data], axis=0)
+      meta.update({"count": 12, "height": height, "width": width, "dtype": stacked.dtype})
+
+    with MemoryFile() as memfile:
+      with memfile.open(**meta) as dst:
+        dst.write(stacked)
+      return memfile.read()
+
+
+def get_reference_grid(fire_id: str):
+  """Return reference transform/CRS/size from post-fire raster for alignment."""
+  paths = resolve_raster_paths(fire_id)
+  post_path = paths["post"]
+  with rasterio.open(post_path) as ds:
+    return {
+      "transform": ds.transform,
+      "crs": ds.crs,
+      "width": ds.width,
+      "height": ds.height,
+    }
+
+
+def compute_severity_grid(mask: np.ndarray, bounds) -> List[List[int]]:
+  """Aggregate mask into ~1km tiles (majority class per tile)."""
+  height, width = mask.shape
+  try:
+    minx, miny = bounds[0]
+    maxx, maxy = bounds[1]
+    pixel_size = abs((maxx - minx) / width) if width else 30.0
+  except Exception:
+    pixel_size = 30.0
+
+  tile_px = max(1, int(round(1000.0 / pixel_size)))
+  grid: List[List[int]] = []
+  for row in range(0, height, tile_px):
+    row_vals = []
+    for col in range(0, width, tile_px):
+      block = mask[row:row + tile_px, col:col + tile_px]
+      if block.size == 0:
+        row_vals.append(0)
+        continue
+      counts = np.bincount(block.flatten(), minlength=6)
+      row_vals.append(int(counts.argmax()))
+    grid.append(row_vals)
+  return grid
+
+
+async def run_segmentation(fire_id: str, model_url: Optional[str] = None) -> Dict:
+  """Call model service with prepared stack and return parsed JSON."""
+  tif_bytes = build_pre_post_stack(fire_id)
+  target_url = model_url or MODEL_SERVICE_URL
+  logger.info("Calling model service %s for fire %s (stack bytes=%s)", target_url, fire_id, len(tif_bytes))
+
+  async with httpx.AsyncClient(timeout=60.0) as client:
+    resp = await client.post(target_url, files={"tif": ("chip.tif", tif_bytes, "image/tiff")})
+
+  if resp.status_code != 200:
+    logger.error("Model service error (%s) for %s: %s", resp.status_code, fire_id, resp.text)
+    raise HTTPException(status_code=resp.status_code, detail=resp.text)
+  return resp.json()
 
 
 def pick_fire(fire_id: Optional[str]) -> Dict:
@@ -161,7 +288,7 @@ def normalize_priorities(raw: Dict[str, float]) -> Dict[str, float]:
   return {k: v / total for k, v in raw.items()}
 
 
-def jitter_coords(lat: float, lng: float, delta: float = 0.18) -> List[float]:
+def jitter_coords(lat: float, lng: float, delta: float = 0.05) -> List[float]:
   return [
     round(lat + random.uniform(-delta, delta), 4),
     round(lng + random.uniform(-delta, delta), 4),
@@ -177,7 +304,7 @@ def generate_hotspots(fire: Dict) -> List[Dict]:
   base_lat, base_lng = fire["lat"], fire["lng"]
   hotspots = []
   for idx in range(3):
-    coords = jitter_coords(base_lat, base_lng, delta=0.25)
+    coords = jitter_coords(base_lat, base_lng, delta=0.08)
     hotspots.append({
       "id": f"{fire['id']}-sector-{idx}",
       "title": f"Sector {idx + 1}",
@@ -218,7 +345,7 @@ def generate_layers(fire: Dict, timeline_meta: Dict, priorities: Dict[str, float
     }[layer_key], 0.25)
 
     for _ in range(2):
-      coords = jitter_coords(center_lat, center_lng, delta=0.22)
+      coords = jitter_coords(center_lat, center_lng, delta=0.1)
       radius = int(base_radius * (0.6 + weight * 0.8) * decay * random.uniform(0.8, 1.2))
       intensity = clamp((0.55 + weight * 0.5) * decay + random.uniform(-0.08, 0.08))
       layers[layer_key].append({
@@ -291,21 +418,22 @@ def generate_insights(fire: Dict, timeline_meta: Dict) -> List[Dict]:
 
 
 def format_stats(fire: Dict) -> Dict:
-  # Weather conditions (dummy data for now)
-  temps = [68, 72, 75, 78, 82, 85]
-  conditions = ["Clear", "Partly Cloudy", "Sunny", "Windy"]
-  temp = random.choice(temps)
-  condition = random.choice(conditions)
-  weather = f"{temp}°F, {condition}"
-  
-  # Reburn risk (dummy data - will be calculated later based on burn history)
-  # For now, randomly assign High/Medium/Low
+  raw = fire.get("_raw", {})
+  temp_c = raw.get("avg_temp_c")
+  temp_f = round((temp_c * 9/5) + 32) if isinstance(temp_c, (int, float)) else random.choice([68, 72, 75, 78])
+  condition = "Sunny"
+  weather = f"{temp_f}°F, {condition}"
+
   risk_levels = ["High", "Medium", "Low"]
-  risk_weights = [0.3, 0.5, 0.2]  # 30% High, 50% Medium, 20% Low
-  reburn_risk = random.choices(risk_levels, weights=risk_weights)[0]
-  
-  incidents = random.randint(3, 8)
-  updated = f"{fire['region']} · Updated {random.randint(15, 80)} mins ago"
+  # If land_burned_frequency provided, skew risk
+  freq = raw.get("land_burned_frequency", 0)
+  if freq and freq > 0:
+    reburn_risk = "High" if freq > 1 else "Medium"
+  else:
+    reburn_risk = "Low"
+
+  incidents = raw.get("incidents") or random.randint(3, 8)
+  updated = f"{fire.get('region', fire.get('state', ''))} · Updated {random.randint(15, 80)} mins ago"
   return {
     "weather": weather,
     "reburnRisk": reburn_risk,
@@ -455,11 +583,125 @@ async def get_scenario(
     "markers": hotspots,
     "priorities": priorities_summary,
     "nextSteps": next_steps,
-    "insights": insights,
     "mapTip": f"{timeline_meta['label']} · {timeline_meta['description']}",
     "generatedAt": datetime.now(timezone.utc).isoformat(),
   }
   return response
+
+
+@app.post("/api/segment")
+async def segment_fire(
+  fireId: str = Query(..., description="Fire identifier"),
+  modelUrl: Optional[str] = Query(None, description="Override model service URL"),
+):
+  """
+  Build a pre+post stack for the requested fire and forward to the segmentation service.
+  Returns a base64 PNG mask plus spatial metadata (bounds/CRS/size) for map overlay.
+  """
+  target_url = modelUrl or MODEL_SERVICE_URL
+  data = await run_segmentation(fireId, target_url)
+
+  severity_grid: List[List[int]] = []
+  if data.get("mask_png_base64") and data.get("bounds"):
+    try:
+      png_bytes = base64.b64decode(data["mask_png_base64"])
+      mask = np.array(Image.open(io.BytesIO(png_bytes)).convert("P"), dtype=np.uint8)
+      severity_grid = compute_severity_grid(mask, data.get("bounds"))
+    except Exception:
+      logger.exception("Failed to compute severity grid for %s", fireId)
+
+  return {
+    "fireId": fireId,
+    "maskPng": data.get("mask_png_base64"),
+    "bounds": data.get("bounds"),
+    "crs": data.get("crs"),
+    "size": {"width": data.get("width"), "height": data.get("height")},
+    "palette": data.get("palette_rgb"),
+    "classes": data.get("classes"),
+    "modelUrl": target_url,
+    "severities_grid": severity_grid,
+  }
+
+
+@app.get("/api/segment-mask/{fire_id}.tif")
+async def segment_mask_tif(fire_id: str):
+  """
+  Run segmentation and return a georeferenced GeoTIFF mask for frontend georaster overlay.
+  Class 0 remains in the data (client can render transparent).
+  """
+  try:
+    data = await run_segmentation(fire_id)
+
+    if not data.get("mask_png_base64") or not data.get("bounds"):
+      raise HTTPException(status_code=500, detail="Segmentation response missing data")
+
+    png_bytes = base64.b64decode(data["mask_png_base64"])
+    img = Image.open(io.BytesIO(png_bytes)).convert("P")
+    mask = np.array(img, dtype=np.uint8)
+
+    # Trust the mask array dimensions; ignore declared size if it disagrees.
+    height, width = mask.shape
+    bounds = data["bounds"]
+    crs_str = data.get("crs", "EPSG:4326")
+    logger.info("Segment mask for %s: mask shape %sx%s, bounds=%s, crs=%s", fire_id, width, height, bounds, crs_str)
+
+    minx, miny = bounds[0]
+    maxx, maxy = bounds[1]
+
+    pixel_width = (maxx - minx) / width
+    pixel_height = (maxy - miny) / height
+    transform = from_origin(minx, maxy, pixel_width, pixel_height)
+
+    # Reproject onto the original post-fire raster grid to match previous overlays
+    ref = get_reference_grid(fire_id)
+    dst_crs = ref["crs"]
+    dst_transform = ref["transform"]
+    dst_width = ref["width"]
+    dst_height = ref["height"]
+
+    src_crs = CRS.from_string(crs_str)
+
+    try:
+      from rasterio.warp import reproject, Resampling
+      dst_mask = np.zeros((dst_height, dst_width), dtype=mask.dtype)
+      reproject(
+        source=mask,
+        destination=dst_mask,
+        src_transform=transform,
+        src_crs=src_crs,
+        dst_transform=dst_transform,
+        dst_crs=dst_crs,
+        resampling=Resampling.nearest,
+      )
+      mask = dst_mask
+      transform = dst_transform
+      width, height = dst_width, dst_height
+      src_crs = dst_crs
+      logger.info("Reprojected mask for %s onto reference grid (%sx%s)", fire_id, width, height)
+    except Exception:
+      logger.exception("Reprojection to reference grid failed for %s; returning source grid", fire_id)
+
+    with MemoryFile() as memfile:
+      with memfile.open(
+        driver="GTiff",
+        height=height,
+        width=width,
+        count=1,
+        dtype=mask.dtype,
+        crs=src_crs,
+        transform=transform,
+      ) as dst:
+        dst.write(mask, 1)
+      tif_bytes = memfile.read()
+
+    return StreamingResponse(io.BytesIO(tif_bytes), media_type="image/tiff")
+
+  except HTTPException:
+    # Already meaningful; let FastAPI handle.
+    raise
+  except Exception as exc:
+    logger.exception("Failed to build segment mask for %s", fire_id)
+    raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.get("/api/ask")
