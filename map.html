@@ -80,13 +80,6 @@
             />
             <span>Burn severity</span>
           </label>
-          <label class="layer" data-tooltip="Reburn risk: Areas with elevated risk of subsequent fires based on burn history and fuel accumulation.">
-            <input
-              type="checkbox"
-              data-layer="reburnRisk"
-            />
-            <span>Reburn risk</span>
-          </label>
           <label class="layer" data-tooltip="Best next steps: Recommended priority areas for post-fire management and recovery actions.">
             <input
               type="checkbox"
@@ -127,24 +120,6 @@
           <div class="priorities-list" data-priorities>
             <p class="muted small">Adjust a slider to see how the model changes course.</p>
           </div>
-        </section>
-
-        <section class="panel-block">
-          <div class="block-header">
-            <p>Forecast stage</p>
-            <span data-forecast-label>Initial assessment (Day 7)</span>
-          </div>
-          <div class="slider timeline" data-tooltip="Drag to see how burn severity, watershed stress, and infrastructure exposure evolve from fire ignition through long-term recovery.">
-            <input type="range" min="0" max="4" value="2" data-forecast-slider />
-            <div class="slider-value" data-forecast-desc>First MTBS-inspired burn severity mapping</div>
-          </div>
-        </section>
-
-        <section class="legend">
-          <h2>Legend</h2>
-          <div class="legend-item"><span class="dot high"></span>High priority</div>
-          <div class="legend-item"><span class="dot medium"></span>Moderate priority</div>
-          <div class="legend-item"><span class="dot low"></span>Low priority</div>
         </section>
       </aside>
 
