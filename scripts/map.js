@@ -78,16 +78,31 @@ const state = {
   selectedYear: null,
 };
 
-// Initialize year dropdown (1994-2025)
-const initializeYearDropdown = () => {
+// Initialize year dropdown (derived from loaded fire catalog when available)
+const initializeYearDropdown = (years = null) => {
   if (!els.yearSelect) return;
-  
-  for (let year = 2025; year >= 1994; year--) {
+
+  // Preserve the first "Select year" option.
+  const first = els.yearSelect.querySelector('option[value=""]');
+  els.yearSelect.innerHTML = '';
+  if (first) els.yearSelect.appendChild(first);
+  else {
     const option = document.createElement('option');
-    option.value = year.toString();
-    option.textContent = year.toString();
+    option.value = '';
+    option.textContent = 'Select year';
     els.yearSelect.appendChild(option);
   }
+
+  const yearList = Array.isArray(years) && years.length
+    ? [...new Set(years)].filter((y) => Number.isFinite(y)).sort((a, b) => b - a)
+    : Array.from({ length: 2025 - 1994 + 1 }, (_, i) => 2025 - i);
+
+  yearList.forEach((year) => {
+    const option = document.createElement('option');
+    option.value = String(year);
+    option.textContent = String(year);
+    els.yearSelect.appendChild(option);
+  });
 };
 
 // US States data for autocomplete (frontend only)
@@ -191,6 +206,15 @@ const debounce = (fn, delay = 350) => {
 };
 
 const formatNumber = (value) => value.toLocaleString();
+
+const getFireYear = (fire) => {
+  if (fire && typeof fire.year === 'number') return fire.year;
+  const dateStr = fire.start_date || fire.startDate || fire.updated || '';
+  if (!dateStr) return null;
+  const y = parseInt(String(dateStr).slice(0, 4), 10);
+  return Number.isFinite(y) ? y : null;
+};
+
 
 const setPriorityDisplays = () => {
   Object.entries(state.priorities).forEach(([key, value]) => {
@@ -1050,44 +1074,66 @@ const buildMockScenario = () => {
   };
 };
 
+// Master dataset-backed catalog (static, no login / no worker).
+// Place the generated file at: /data/fires_master.json
+const MASTER_FIRES_URL = 'data/fires_master.json';
+
+const normalizeMasterFire = (x) => {
+  // Defensive parsing for Github Pages (all JSON values are already normalized, but keep this safe)
+  const lat = x.lat != null ? Number(x.lat) : null;
+  const lng = x.lng != null ? Number(x.lng) : null;
+  const acres = x.acres != null ? Number(x.acres) : null;
+  const year = x.year != null ? Number(x.year) : null;
+  return {
+    id: String(x.id || x.fire_id || ''),
+    name: String(x.name || 'Unknown Fire'),
+    state: String(x.state || ''),
+    lat: Number.isFinite(lat) ? lat : null,
+    lng: Number.isFinite(lng) ? lng : null,
+    acres: Number.isFinite(acres) ? acres : null,
+    year: Number.isFinite(year) ? year : null,
+    // Keep a simple "region" label for the left panel (zip/event id is ok).
+    region: String(x.region || ''),
+    // Optional: used by some existing UI sorting logic
+    start_date: String(x.date || ''),
+    updated: String(x.date || ''),
+  };
+};
+
 const fetchFireCatalog = async (filters = null) => {
   try {
-    let url = `${API_BASE_URL}/api/fires`;
-    const params = new URLSearchParams();
-    
-    if (filters) {
-      if (filters.state) {
-        params.append('state', filters.state);
-      }
-      if (filters.year) {
-        params.append('year', filters.year);
-      }
+    const response = await fetch(MASTER_FIRES_URL, { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Master fires fetch failed: ${response.status}`);
+    const raw = await response.json();
+    let fires = (raw || []).map(normalizeMasterFire).filter((f) => f.id);
+
+    // Filter by state/year if provided
+    if (filters?.state) {
+      const s = String(filters.state).toUpperCase();
+      fires = fires.filter((f) => String(f.state).toUpperCase() === s);
     }
-    
-    if (params.toString()) {
-      url += `?${params.toString()}`;
+    if (filters?.year) {
+      fires = fires.filter((f) => getFireYear(f) === filters.year);
     }
-    
-    const response = await fetch(url);
-    if (!response.ok) throw new Error('Failed to load fire catalog');
-    const data = await response.json();
-    if (Array.isArray(data.fires) && data.fires.length) {
-      fireCatalog = data.fires.map((fire) => ({
-        ...fire,
-        year: fire.startDate ? new Date(fire.startDate).getFullYear() : 
-              (fire.start_date ? new Date(fire.start_date).getFullYear() : undefined),
-      }));
-    } else {
-      fireCatalog = [];
-    }
-  } catch (error) {
-    console.warn('Using fallback fire catalog', error);
+
+    // "Recent" = sort by year desc, then by acres desc (date isn't always meaningful in MTBS exports)
+    fires.sort((a, b) => {
+      const ya = getFireYear(a) || 0;
+      const yb = getFireYear(b) || 0;
+      if (yb !== ya) return yb - ya;
+      return (b.acres || 0) - (a.acres || 0);
+    });
+
+    fireCatalog = fires;
+    return fireCatalog;
+  } catch (e) {
+    console.warn('Using FALLBACK_FIRES (master dataset missing/unreachable):', e);
     fireCatalog = [...FALLBACK_FIRES];
+    return fireCatalog;
   }
-  
-  // Return the catalog - don't render here
-  return fireCatalog;
 };
+
+
 
 const fetchScenario = async () => {
   const params = new URLSearchParams({
@@ -1845,77 +1891,51 @@ if (els.searchBtn) {
     };
     
     // Fetch filtered fires
-    const filteredFires = await fetchFireCatalog(filters);
-    
-    // Sort filtered results by year descending (newest first)
-    const sortedFilteredFires = [...filteredFires].sort((a, b) => {
-      const getYear = (fire) => {
-        const dateStr = fire.start_date || fire.startDate || '';
-        if (dateStr) {
-          const year = parseInt(dateStr.split('-')[0]);
-          return isNaN(year) ? 0 : year;
-        }
-        return 0;
-      };
-      
-      const yearA = getYear(a);
-      const yearB = getYear(b);
-      
-      if (yearA === yearB) {
-        const dateA = a.start_date || a.startDate || '';
-        const dateB = b.start_date || b.startDate || '';
-        return dateB.localeCompare(dateA);
-      }
-      
-      return yearB - yearA; // Descending order (newest first)
-    });
-    
-    console.log('Filtered fires (sorted by year descending):', sortedFilteredFires.map(f => `${f.name} (${f.start_date || f.startDate})`));
-    
-    // Display filtered results (don't update map)
-    renderFireList(sortedFilteredFires);
-    renderFirePins(sortedFilteredFires);
+    // Fetch fires for the selected state (backend always returns CA anyway, but keep state filter here)
+const allFires = await fetchFireCatalog({ state: stateCode });
+
+// Filter by selected year LOCALLY (use helper that checks start_date OR updated)
+let results = [...allFires];
+if (filters.year) {
+  results = results.filter((f) => getFireYear(f) === filters.year);
+}
+
+// Sort: updated desc, fallback to start_date
+results.sort((a, b) =>
+  String(b.updated || b.start_date || b.startDate || '').localeCompare(
+    String(a.updated || a.start_date || a.startDate || '')
+  )
+);
+
+console.log(
+  'Filtered fires:',
+  results.map((f) => `${f.name} (${getFireYear(f)})`)
+);
+
+// Display results
+renderFireList(results);
+renderFirePins(results);
+
   });
 }
 
-// Initialize year dropdown on page load
-initializeYearDropdown();
-
-// Load top 4 most recent fires by default (sorted by recency)
+// Load top 4 fires by default from the master dataset
 fetchFireCatalog().then((allFires) => {
-  // Backend already sorts by date, but ensure we sort by year descending (newest first)
+  // Populate year dropdown based on the dataset
+  initializeYearDropdown(allFires.map(getFireYear).filter((y) => y != null));
+
+  // Master catalog is already sorted (year desc, acres desc), but keep this defensive.
   const sortedFires = [...allFires].sort((a, b) => {
-    // Extract year from date string (format: YYYY-MM-DD)
-    const getYear = (fire) => {
-      const dateStr = fire.start_date || fire.startDate || '';
-      if (dateStr) {
-        const year = parseInt(dateStr.split('-')[0]);
-        return isNaN(year) ? 0 : year;
-      }
-      return 0;
-    };
-    
-    const yearA = getYear(a);
-    const yearB = getYear(b);
-    
-    // If same year, sort by full date
-    if (yearA === yearB) {
-      const dateA = a.start_date || a.startDate || '';
-      const dateB = b.start_date || b.startDate || '';
-      return dateB.localeCompare(dateA); // Newest first
-    }
-    
-    // Sort by year descending (newest first)
-    return yearB - yearA;
+    const ya = getFireYear(a) || 0;
+    const yb = getFireYear(b) || 0;
+    if (yb !== ya) return yb - ya;
+    return (b.acres || 0) - (a.acres || 0);
   });
-  
+
   const top4Fires = sortedFires.slice(0, 4);
-  console.log('Top 4 fires (sorted by year descending):', top4Fires.map(f => `${f.name} (${f.start_date || f.startDate})`));
-  
   renderFireList(top4Fires);
   renderFirePins(top4Fires);
-  
-  // Load scenario for first fire (newest) if available
+
   if (top4Fires.length > 0) {
     state.fireId = top4Fires[0].id;
     loadScenario();

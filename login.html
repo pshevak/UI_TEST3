@@ -3,6 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="google-client-id" content="236349875388-l926jrpgekh544jt7ub4m98dukgtrrqh.apps.googleusercontent.com" />
     <title>Sign in | TerraNova</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -22,7 +23,7 @@
         <p class="subtitle">
           Authenticate to unlock personalized wildfire recovery priorities and live collaboration tools.
         </p>
-        <button class="btn gmail" id="gmailLogin">
+        <button class="btn gmail" id="gmailLogin" data-google-client-id="">
           <span class="gmail-icon" aria-hidden="true">G</span>
           Continue with Gmail
         </button>
@@ -31,7 +32,7 @@
           <p>or</p>
           <span></span>
         </div>
-        <a class="btn outline" href="map.html">Continue as guest</a>
+        <a class="btn outline" href="map.html" data-guest-login>Continue as guest</a>
         <div class="form-meta">
           <label class="checkbox">
             <input type="checkbox" checked />
@@ -81,15 +82,6 @@
         </ul>
       </section>
     </main>
-    <script>
-      const gmailBtn = document.getElementById('gmailLogin');
-      gmailBtn.addEventListener('click', () => {
-        gmailBtn.classList.add('loading');
-        gmailBtn.textContent = 'Connecting to Gmail…';
-        setTimeout(() => {
-          window.location.href = 'map.html';
-        }, 1200);
-      });
-    </script>
+    <script src="scripts/login.js"></script>
   </body>
 </html>
