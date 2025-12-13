@@ -175,6 +175,31 @@ def get_reference_grid(fire_id: str):
     }
 
 
+def compute_severity_grid(mask: np.ndarray, bounds) -> List[List[int]]:
+  """Aggregate mask into ~1km tiles (majority class per tile)."""
+  height, width = mask.shape
+  try:
+    minx, miny = bounds[0]
+    maxx, maxy = bounds[1]
+    pixel_size = abs((maxx - minx) / width) if width else 30.0
+  except Exception:
+    pixel_size = 30.0
+
+  tile_px = max(1, int(round(1000.0 / pixel_size)))
+  grid: List[List[int]] = []
+  for row in range(0, height, tile_px):
+    row_vals = []
+    for col in range(0, width, tile_px):
+      block = mask[row:row + tile_px, col:col + tile_px]
+      if block.size == 0:
+        row_vals.append(0)
+        continue
+      counts = np.bincount(block.flatten(), minlength=6)
+      row_vals.append(int(counts.argmax()))
+    grid.append(row_vals)
+  return grid
+
+
 async def run_segmentation(fire_id: str, model_url: Optional[str] = None) -> Dict:
   """Call model service with prepared stack and return parsed JSON."""
   tif_bytes = build_pre_post_stack(fire_id)
@@ -469,6 +494,16 @@ async def segment_fire(
   """
   target_url = modelUrl or MODEL_SERVICE_URL
   data = await run_segmentation(fireId, target_url)
+
+  severity_grid: List[List[int]] = []
+  if data.get("mask_png_base64") and data.get("bounds"):
+    try:
+      png_bytes = base64.b64decode(data["mask_png_base64"])
+      mask = np.array(Image.open(io.BytesIO(png_bytes)).convert("P"), dtype=np.uint8)
+      severity_grid = compute_severity_grid(mask, data.get("bounds"))
+    except Exception:
+      logger.exception("Failed to compute severity grid for %s", fireId)
+
   return {
     "fireId": fireId,
     "maskPng": data.get("mask_png_base64"),
@@ -478,6 +513,7 @@ async def segment_fire(
     "palette": data.get("palette_rgb"),
     "classes": data.get("classes"),
     "modelUrl": target_url,
+    "severities_grid": severity_grid,
   }
 
 
