@@ -5,10 +5,14 @@ import glob
 import os
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
+import time
+import requests
+from typing import Any, Dict, List
 
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+
 
 
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -25,6 +29,14 @@ app.add_middleware(
   allow_headers=["*"],
 )
 
+CALFIRE_ALL_URL = "https://terranova.prajaktashevakari.workers.dev/"
+
+FIRES_CACHE: Dict[str, Any] = {
+  "last_refresh": 0.0,
+  "data": []  # List[dict]
+}
+
+CACHE_TTL_SECONDS = 300  # 5 minutes
 
 FIRE_CATALOG: List[Dict] = [
   {
@@ -303,6 +315,55 @@ def format_stats(fire: Dict) -> Dict:
   }
 
 
+def _normalize_calfire_incident(item: dict) -> dict:
+  # Make it match your frontend’s expected shape.
+  # Add/remove fields here as needed.
+  start_raw = item.get("StartedDateOnly") or item.get("Started") or ""
+  start_date = start_raw[:10] if isinstance(start_raw, str) else ""
+
+  return {
+    "id": item.get("UniqueId") or item.get("Id") or item.get("Name"),
+    "name": item.get("Name") or "Unknown Fire",
+    "state": "CA",
+    "lat": item.get("Latitude"),
+    "lng": item.get("Longitude"),
+    "acres": item.get("AcresBurned"),
+    "start_date": start_date,
+    "county": item.get("County"),
+    "location": item.get("Location"),
+    "percent_contained": item.get("PercentContained"),
+    "is_active": item.get("IsActive"),
+    "updated": item.get("Updated"),
+    "url": item.get("Url"),
+    "type": item.get("Type"),
+  }
+
+def _refresh_fires_cache(force: bool = False) -> None:
+  now = time.time()
+  if (not force) and (now - FIRES_CACHE["last_refresh"] < CACHE_TTL_SECONDS):
+    return
+
+  resp = requests.get(CALFIRE_ALL_URL, timeout=15)
+  resp.raise_for_status()
+
+  raw = resp.json()
+  normalized = []
+  for x in raw:
+    lat, lng = x.get("Latitude"), x.get("Longitude")
+    if lat is None or lng is None:
+      continue
+    normalized.append(_normalize_calfire_incident(x))
+
+  # Sort “most recent first”: updated desc (fallback to start_date)
+  normalized.sort(
+    key=lambda f: (f.get("updated") or "", f.get("start_date") or ""),
+    reverse=True
+  )
+
+  FIRES_CACHE["data"] = normalized
+  FIRES_CACHE["last_refresh"] = now
+
+
 @app.get("/api/fires")
 async def list_fires(
   state: Optional[str] = Query(None, description="Filter by state code (e.g., CA, OR)"),
@@ -312,18 +373,22 @@ async def list_fires(
   Returns list of fires, optionally filtered by state and year.
   Results are sorted by most recent first.
   """
-  filtered_fires = FIRE_CATALOG.copy()
-  
+  _refresh_fires_cache()
+  filtered_fires = list(FIRES_CACHE["data"])  # copy
+
   # Apply filters
   if state:
     state_upper = state.upper().strip()
-    filtered_fires = [f for f in filtered_fires if f["state"].upper() == state_upper]
-  
+    filtered_fires = [f for f in filtered_fires if (f.get("state") or "").upper() == state_upper]
+
   if year:
     filtered_fires = [
-      f for f in filtered_fires 
-      if f["start_date"] and int(f["start_date"].split("-")[0]) == year
+      f for f in filtered_fires
+      if f.get("start_date") and int(str(f["start_date"]).split("-")[0]) == year
     ]
+
+  return filtered_fires
+
   
   # Sort by year descending (newest first), then by date within same year
   def get_sort_key(fire: Dict) -> tuple:
@@ -584,4 +649,3 @@ async def get_best_next_steps_raster(fire_id: str):
 @app.get("/api/health")
 async def health_check():
   return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
-
