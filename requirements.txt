@@ -5,3 +5,4 @@ torch
 rasterio
 pillow
 numpy
+requests

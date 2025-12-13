@@ -32,7 +32,7 @@ logger = logging.getLogger("uvicorn.error")
 
 BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.normpath(os.path.join(BACKEND_DIR, ".."))
-DATA_ROOT = os.path.join(PROJECT_ROOT, "CA_data")
+DATA_ROOT = os.path.join(PROJECT_ROOT, "DATA")
 
 
 app = FastAPI(title="TerraNova Demo API", version="0.2.0")
@@ -53,7 +53,7 @@ FIRES_CACHE: Dict[str, Any] = {
 
 CACHE_TTL_SECONDS = 300  # 5 minutes
 
-FIRE_DATA_PATH = Path(PROJECT_ROOT) / "fires_master_with_names_and_acres.json"
+FIRE_DATA_PATH = Path(PROJECT_ROOT) / "DATA" / "fires_master.json"
 MODEL_SERVICE_URL = os.environ.get("MODEL_SERVICE_URL", "http://localhost:8002/predict")
 
 
@@ -64,7 +64,7 @@ def load_fire_catalog() -> List[Dict]:
   catalog = []
   for entry in entries:
     fire_id = entry.get("fire_id") or entry.get("id")
-    name = entry.get("fire_name") or entry.get("name") or fire_id
+    name = entry.get("name") or entry.get("fire_name") or fire_id
     state = entry.get("state", "CA")
     acres_val = entry.get("acres")
     acres = acres_val if isinstance(acres_val, (int, float)) else 0
@@ -100,10 +100,21 @@ def build_raster_map(catalog: List[Dict]) -> Dict[str, Dict[str, Path]]:
     pre_name = entry.get("pre_fire_file") or post_name
     if not post_name:
       continue
-    base = Path("CA_data") / fire_id
+    base = Path("DATA") / "postfire_images"
+    pre_path = base / pre_name
+    post_path = base / post_name
+    # Fallback to legacy CA_data/<fire_id>/ if files not present in DATA/postfire_images
+    legacy_base = Path("CA_data") / fire_id
+    if not pre_path.is_file() and (legacy_base / pre_name).is_file():
+      pre_path = legacy_base / pre_name
+    if not post_path.is_file() and (legacy_base / post_name).is_file():
+      post_path = legacy_base / post_name
+    # If pre is missing but post exists, reuse post for pre to allow segmentation
+    if not pre_path.is_file() and post_path.is_file():
+      pre_path = post_path
     mapping[fire_id] = {
-      "pre": base / pre_name,
-      "post": base / post_name,
+      "pre": pre_path,
+      "post": post_path,
     }
   return mapping
 
@@ -146,12 +157,43 @@ def build_pre_post_stack(fire_id: str) -> bytes:
   paths = resolve_raster_paths(fire_id)
   pre_path, post_path = paths["pre"], paths["post"]
 
+  def safe_read(ds: rasterio.io.DatasetReader, idxs):
+    """Read dataset window-by-window, filling zeros on read errors."""
+    count = len(idxs)
+    out = np.zeros((count, ds.height, ds.width), dtype=ds.dtypes[0])
+    for _, window in ds.block_windows(1):
+      try:
+        block = ds.read(indexes=idxs, window=window)
+      except Exception as exc:
+        logger.error("Read failed for %s window %s: %s", ds.name, window, exc)
+        block = np.zeros((count, window.height, window.width), dtype=ds.dtypes[0])
+      out[:, window.row_off:window.row_off+window.height, window.col_off:window.col_off+window.width] = block
+    return out
+
+  def _readable(ds, label: str):
+    try:
+      ds.read(1, window=((0, 1), (0, 1)))
+      return True
+    except Exception as exc:
+      logger.error("Unreadable %s raster for %s (%s): %s", label, fire_id, ds.name, exc)
+      raise HTTPException(status_code=500, detail=f"Unreadable {label} raster for {fire_id}: {exc}")
+
   with rasterio.open(pre_path) as pre_ds, rasterio.open(post_path) as post_ds:
+    _readable(pre_ds, "pre")
+    _readable(post_ds, "post")
     if pre_ds.count < 6 or post_ds.count < 6:
       raise HTTPException(status_code=400, detail="Expected at least 6 bands in both pre and post rasters")
 
-    pre_data = pre_ds.read(indexes=list(range(1, 7)))
-    post_data = post_ds.read(indexes=list(range(1, 7)))
+    try:
+      pre_data = safe_read(pre_ds, list(range(1, 7)))
+    except Exception as exc:
+      logger.error("Failed reading pre-fire raster for %s: %s", fire_id, exc)
+      raise HTTPException(status_code=500, detail=f"Failed to read pre-fire raster for {fire_id}")
+    try:
+      post_data = safe_read(post_ds, list(range(1, 7)))
+    except Exception as exc:
+      logger.error("Failed reading post-fire raster for %s: %s", fire_id, exc)
+      raise HTTPException(status_code=500, detail=f"Failed to read post-fire raster for {fire_id}")
 
     height = min(pre_data.shape[1], post_data.shape[1])
     width = min(pre_data.shape[2], post_data.shape[2])
