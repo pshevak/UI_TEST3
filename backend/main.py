@@ -25,6 +25,7 @@ import httpx
 import numpy as np
 import rasterio
 from pathlib import Path
+from textwrap import dedent
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi import FastAPI, HTTPException, Query
@@ -163,6 +164,16 @@ TIMELINE_STAGES = [
   {"value": 3, "label": "Stabilization phase (Day 30)", "description": "Treatment crews in the field; erosion control active", "days_from_ignition": 30},
   {"value": 4, "label": "Recovery outlook (Year 1)", "description": "Predicted vegetation recovery and infrastructure repairs", "days_from_ignition": 365},
 ]
+
+# ------------------------------------------------------------------------------
+# Gemini (Ask LLM) configuration
+# ------------------------------------------------------------------------------
+# Note: The user provided this key for the free tier and approved hard-coding.
+GEMINI_API_KEY = "AIzaSyD0vjq7PPt5wVXYF6Zul5SVWV3MlCur52M"
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_ENDPOINT = (
+  f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+)
 
 
 def clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
@@ -401,6 +412,115 @@ async def run_segmentation(fire_id: str, model_url: Optional[str] = None) -> Dic
     logger.error("Model service error (%s) for %s: %s", resp.status_code, fire_id, resp.text)
     raise HTTPException(status_code=resp.status_code, detail=resp.text)
   return resp.json()
+
+
+def summarize_segmentation_payload(seg_data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+  """Return a lightweight summary of the segmentation output for prompting."""
+  if not seg_data:
+    return {
+      "available": False,
+      "note": "Segmentation service not available; using expected response schema.",
+      "expected_schema": {
+        "mask_png_base64": "<base64-encoded paletted PNG>",
+        "width": "<int>",
+        "height": "<int>",
+        "bounds": "[[minX, minY], [maxX, maxY]]",
+        "crs": "<coordinate reference system>",
+        "classes": "[0..5 burn classes]",
+        "palette_rgb": "{class_id: [r, g, b]}",
+      },
+    }
+
+  summary: Dict[str, Any] = {
+    "available": True,
+    "width": seg_data.get("width"),
+    "height": seg_data.get("height"),
+    "bounds": seg_data.get("bounds"),
+    "crs": seg_data.get("crs"),
+    "classes": seg_data.get("classes"),
+    "palette_rgb": seg_data.get("palette_rgb"),
+  }
+
+  try:
+    mask_b64 = seg_data.get("mask_png_base64")
+    if mask_b64:
+      png_bytes = base64.b64decode(mask_b64)
+      mask_img = Image.open(io.BytesIO(png_bytes))
+      mask_arr = np.array(mask_img)
+      total = mask_arr.size or 1
+      counts: Dict[int, int] = {}
+      for cls_val, count in zip(*np.unique(mask_arr, return_counts=True)):
+        counts[int(cls_val)] = int(count)
+      percents = {cls: round((count * 100.0) / total, 2) for cls, count in counts.items()}
+      summary["class_counts"] = counts
+      summary["class_percent"] = percents
+      summary["mask_png_bytes"] = len(png_bytes)
+  except Exception:
+    logger.exception("Failed to summarize segmentation payload")
+    summary["note"] = "Segmentation payload could not be summarized; raw data omitted."
+
+  return summary
+
+
+def build_fire_context(fire: Dict[str, Any]) -> Dict[str, Any]:
+  """Flatten the fire record and raw metadata for prompt construction."""
+  raw = fire.get("_raw", fire)
+  return {
+    "id": fire.get("id"),
+    "name": fire.get("name"),
+    "state": fire.get("state"),
+    "region": fire.get("region") or raw.get("region"),
+    "acres": fire.get("acres"),
+    "start_date": fire.get("start_date") or raw.get("date"),
+    "cause": fire.get("cause", "Unknown"),
+    "lat": fire.get("lat"),
+    "lng": fire.get("lng"),
+    "summary": fire.get("summary"),
+    "mtbs_event_id": fire.get("mtbs_event_id") or raw.get("fire_id"),
+    "reburn_flag": raw.get("reburn"),
+    "land_burned_frequency": raw.get("land_burned_frequency"),
+    "environment": {
+      "elevation_m": raw.get("elevation_m"),
+      "avg_temp_c": raw.get("avg_temp_c"),
+      "soil_moisture_pct": raw.get("soil_moisture_pct"),
+      "gw_depth_ft": raw.get("gw_depth_ft"),
+      "ph_val": raw.get("ph_val"),
+      "precip_mm": raw.get("precip_mm"),
+    },
+    "files": {
+      "pre_fire_file": raw.get("pre_fire_file"),
+      "post_fire_file": raw.get("post_fire_file"),
+      "mask": raw.get("mask"),
+    },
+  }
+
+
+async def call_gemini(prompt: str) -> str:
+  """Send a prompt to Gemini and return the first candidate text."""
+  if not GEMINI_API_KEY:
+    raise RuntimeError("Gemini API key not configured")
+
+  payload = {
+    "contents": [
+      {
+        "parts": [{"text": prompt}]
+      }
+    ]
+  }
+
+  url = f"{GEMINI_ENDPOINT}?key={GEMINI_API_KEY}"
+  async with httpx.AsyncClient(timeout=30.0) as client:
+    resp = await client.post(url, json=payload)
+  if resp.status_code != 200:
+    logger.error("Gemini API error %s: %s", resp.status_code, resp.text)
+    raise HTTPException(status_code=resp.status_code, detail="Gemini API call failed")
+
+  data = resp.json()
+  try:
+    return data["candidates"][0]["content"]["parts"][0]["text"]
+  except Exception as exc:
+    logger.exception("Unexpected Gemini response shape: %s", data)
+    raise HTTPException(status_code=500, detail=f"Gemini response parsing failed: {exc}")
 
 
 def pick_fire(fire_id: Optional[str]) -> Dict:
@@ -898,41 +1018,90 @@ async def segment_mask_tif(fire_id: str):
 
 
 @app.get("/api/ask")
-async def ask_about_fire(fireId: str = Query("camp-fire-2018"), question: str = Query("")):
+async def ask_about_fire(
+  fireId: str = Query("camp-fire-2018"),
+  question: str = Query("", description="Plain-language question about the selected fire"),
+):
   """
-  Simple LLM-style Q&A endpoint that returns plain-language fire summaries.
-  In production, replace this with actual LLM calls (OpenAI, Anthropic, etc.).
+  Ask Gemini about a fire using local metadata and segmentation outputs.
+  The prompt includes:
+    - Fire metadata from DATA/fires_master.json
+    - Segmentation summary (class mix, bounds, dims) when available
+    - Reburn-relevant indicators (land_burned_frequency, reburn flag)
   """
-  fire_info = next((f for f in FIRE_CATALOG if f["id"] == fireId), FIRE_CATALOG[0])
-  
-  # Template-based responses for common questions
-  question_lower = question.lower()
-  
-  if "cause" in question_lower or "start" in question_lower or "ignit" in question_lower:
-    answer = f"The {fire_info['name']} started on {fire_info['startDate']} in {fire_info['region']}, {fire_info['state']}. The cause was determined to be {fire_info['cause'].lower()}."
-  
-  elif "damage" in question_lower or "severe" in question_lower or "impact" in question_lower:
-    answer = f"The {fire_info['name']} burned approximately {fire_info['acres']:,} acres. {fire_info['summary']} Our burn severity model classifies the area into high, moderate, and low severity zones to help prioritize recovery efforts."
-  
-  elif "when" in question_lower or "date" in question_lower:
-    answer = f"The {fire_info['name']} ignited on {fire_info['startDate']}. The initial MTBS-style assessment typically occurs within 7 days of ignition, with follow-up mapping at 30 days and long-term recovery tracking extending to 1-5 years."
-  
-  elif "where" in question_lower or "location" in question_lower:
-    answer = f"The {fire_info['name']} occurred in {fire_info['region']}, {fire_info['state']}. You can see the exact location on the map above, with burn severity overlays showing the spatial extent of damage."
-  
-  elif "recovery" in question_lower or "rehab" in question_lower or "restoration" in question_lower:
-    answer = f"Recovery from the {fire_info['name']} is ongoing. Our model tracks burn severity changes over time, helping land managers prioritize watershed stabilization, erosion control, and vegetation reseeding. Adjust the forecast slider to see predicted recovery at different time horizons."
-  
-  elif "model" in question_lower or "algorithm" in question_lower or "how" in question_lower:
-    answer = f"Our burn severity segmentation model analyzes Landsat imagery to classify each 30m pixel as unburned, low, moderate, or high severity. The model was trained on MTBS reference data and uses spectral indices (NDVI, NBR) to detect vegetation loss. The priority sliders let you weight community safety, watershed health, and infrastructure concerns to customize the analysis."
-  
-  else:
-    answer = f"The {fire_info['name']} burned {fire_info['acres']:,} acres in {fire_info['region']}, {fire_info['state']}, starting {fire_info['startDate']}. Cause: {fire_info['cause']}. {fire_info['summary']} Use the map controls to explore burn severity layers, adjust priorities, and see how conditions change over time. Ask more specific questions about the fire's cause, damage, location, recovery, or our modeling approach."
-  
+  fire = pick_fire(fireId)
+  fire_context = build_fire_context(fire)
+
+  seg_data: Optional[Dict[str, Any]] = None
+  seg_summary = summarize_segmentation_payload(None)
+  try:
+    seg_data = await run_segmentation(fireId)
+    seg_summary = summarize_segmentation_payload(seg_data)
+  except Exception as exc:
+    logger.warning("Segmentation unavailable for %s: %s", fireId, exc)
+
+  prompt = dedent(f"""
+    You are TerraNova's friendly assistant. Answer clearly for a general audience,
+    avoid jargon, and keep responses concise (3-6 sentences). When helpful, give
+    practical safety or recovery tips and briefly explain burn severity or reburn risk.
+
+    Fire data:
+    {json.dumps(fire_context, indent=2)}
+
+    Segmentation summary (burn severity model):
+    {json.dumps(seg_summary, indent=2)}
+
+    Question: {question or "Give me a plain-language summary of this fire."}
+
+    Guidance:
+    - If segmentation data is missing, say so briefly and rely on fire metadata.
+    - If reburn_flag is true or land_burned_frequency > 0, mention repeat-burn context.
+    - Use acres and dates when present; keep the tone supportive and actionable.
+    - If you are unsure, state that clearly and suggest what the user can explore next.
+  """).strip()
+
+  answer: str
+  used_llm = False
+  try:
+    answer = await call_gemini(prompt)
+    used_llm = True
+  except Exception as exc:
+    logger.exception("Gemini fallback for /api/ask (fire=%s)", fireId)
+    # Fallback: lightweight template if Gemini fails
+    question_lower = question.lower()
+    if "cause" in question_lower or "start" in question_lower or "ignit" in question_lower:
+      answer = (
+        f"The {fire_context['name']} started around {fire_context.get('start_date') or 'an unknown date'} "
+        f"in {fire_context.get('region') or fire_context.get('state')}. "
+        f"Reported cause: {fire_context.get('cause') or 'unknown'}."
+      )
+    elif "reburn" in question_lower or "again" in question_lower:
+      answer = (
+        "Reburn risk reflects how often an area has burned before. "
+        f"For this fire, prior burn frequency is {fire_context.get('land_burned_frequency')} "
+        f"and reburn flag is {fire_context.get('reburn_flag')}. "
+        "Use the reburn analysis view to see probabilities and mitigation ideas."
+      )
+    elif "where" in question_lower or "location" in question_lower:
+      answer = (
+        f"The {fire_context['name']} is located near ({fire_context.get('lat')}, {fire_context.get('lng')}), "
+        f"in {fire_context.get('region') or fire_context.get('state')}."
+      )
+    else:
+      acres_text = f"{fire_context.get('acres'):,}" if fire_context.get("acres") else "an unknown number of"
+      answer = (
+        f"{fire_context['name']} burned {acres_text} acres in "
+        f"{fire_context.get('region') or fire_context.get('state')}. "
+        "Detailed modeling is temporarily unavailable; please try again shortly."
+      )
+
   return {
     "fireId": fireId,
     "question": question,
     "answer": answer,
+    "usedLLM": used_llm,
+    "segmentationSummary": seg_summary,
+    "fireContext": fire_context,
     "generatedAt": datetime.now(timezone.utc).isoformat(),
   }
 
