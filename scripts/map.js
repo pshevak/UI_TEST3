@@ -88,7 +88,7 @@ function openAnalysisDashboard() {
     (state && state.currentFire && state.currentFire.id) ||
     "camp-fire-2018";
 
-  const url = `analysis?fireId=${encodeURIComponent(fireId)}`;
+  const url = `analysis.html?fireId=${encodeURIComponent(fireId)}`;
   window.location.href = url;
 }
 

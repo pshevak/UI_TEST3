@@ -14,10 +14,13 @@ from typing import Any, Dict, List, Optional
 import time
 import requests
 
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-if CURRENT_DIR not in sys.path:
-    sys.path.insert(0, CURRENT_DIR)
-    
+# Ensure we can import local modules (backend + project root + reburn package)
+BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.normpath(os.path.join(BACKEND_DIR, ".."))
+for path in (BACKEND_DIR, PROJECT_ROOT, os.path.join(PROJECT_ROOT, "reburn")):
+    if path not in sys.path:
+        sys.path.insert(0, path)
+
 import httpx
 import numpy as np
 import rasterio
@@ -37,11 +40,7 @@ from reburn.genetic_planner import plan_best_next_steps
 logger = logging.getLogger("uvicorn.error")
 
 # Add reburn module to path for imports
-BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.normpath(os.path.join(BACKEND_DIR, ".."))
 REBURN_DIR = os.path.join(PROJECT_ROOT, "reburn")
-if REBURN_DIR not in sys.path:
-    sys.path.insert(0, REBURN_DIR)
 
 # Import reburn prediction functions (optional - gracefully handle if not available)
 try:
@@ -126,6 +125,7 @@ def load_fire_catalog() -> List[Dict]:
 
 def build_raster_map(catalog: List[Dict]) -> Dict[str, Dict[str, Path]]:
   mapping: Dict[str, Dict[str, Path]] = {}
+  data_base = Path(PROJECT_ROOT) / "DATA" / "postfire_images"
   for fire in catalog:
     entry = fire.get("_raw", {})
     fire_id = fire["id"]
@@ -134,10 +134,10 @@ def build_raster_map(catalog: List[Dict]) -> Dict[str, Dict[str, Path]]:
     if not post_name:
       continue
     base = Path("DATA") / "postfire_images"
-    pre_path = base / pre_name
-    post_path = base / post_name
+    pre_path = data_base / pre_name
+    post_path = data_base / post_name
     # Fallback to legacy CA_data/<fire_id>/ if files not present in DATA/postfire_images
-    legacy_base = Path("CA_data") / fire_id
+    legacy_base = Path(PROJECT_ROOT) / "CA_data" / fire_id
     if not pre_path.is_file() and (legacy_base / pre_name).is_file():
       pre_path = legacy_base / pre_name
     if not post_path.is_file() and (legacy_base / post_name).is_file():
