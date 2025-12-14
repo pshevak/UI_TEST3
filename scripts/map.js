@@ -168,8 +168,8 @@ const featureLayerGroups = {
   bestNextSteps: L.layerGroup().addTo(map), // GA rectangles + (legacy) raster if enabled
 };
 
-const firePinsLayer = L.layerGroup().addTo(map);
-const hotspotLayer = L.layerGroup().addTo(map);
+// Hotspot pins are disabled (no layer added) to keep the basemap clean.
+const hotspotLayer = L.layerGroup();
 
 // Track raster layers for cleanup
 const rasterLayers = {
@@ -291,24 +291,7 @@ const renderFireList = (fires) => {
       state.fireId = fireId;
       // Re-render to update active state
       renderFireList(fires);
-      renderFirePins(fires);
       // Only clicking a fire updates the map
-      loadScenario();
-    });
-  });
-};
-
-const renderFirePins = (fires) => {
-  firePinsLayer.clearLayers();
-  fires.forEach((fire) => {
-    if (!fire.lat || !fire.lng) return;
-    const isActive = fire.id === state.fireId;
-    const marker = L.marker([fire.lat, fire.lng], { opacity: isActive ? 1 : 0.85 }).addTo(firePinsLayer);
-    marker.bindPopup(`<strong>${fire.name}</strong><p>${fire.region || ''}</p>`);
-    marker.on('click', () => {
-      state.fireId = fire.id;
-      renderFireList(fires);
-      renderFirePins(fires);
       loadScenario();
     });
   });
@@ -791,13 +774,8 @@ const updateLegend = (layerKey) => {
   initializeTooltips();
 };
 
-const renderHotspots = (markers = []) => {
+const renderHotspots = () => {
   hotspotLayer.clearLayers();
-  markers.forEach((marker) => {
-    if (!marker?.coords) return;
-    const popup = `<strong>${marker.title || 'Sector'}</strong><p>${marker.details || ''}</p>`;
-    L.marker(marker.coords, { riseOnHover: true }).addTo(hotspotLayer).bindPopup(popup);
-  });
 };
 
 const renderPriorities = (priorities = []) => {
@@ -1744,7 +1722,6 @@ console.log(
 
 // Display results
 renderFireList(results);
-renderFirePins(results);
 
   });
 }
@@ -1764,7 +1741,6 @@ fetchFireCatalog().then((allFires) => {
 
   const top4Fires = sortedFires.slice(0, 4);
   renderFireList(top4Fires);
-  renderFirePins(top4Fires);
 
   if (top4Fires.length > 0) {
     state.fireId = top4Fires[0].id;
