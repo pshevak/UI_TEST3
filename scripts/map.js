@@ -641,24 +641,31 @@ const renderLayers = async (layers = {}) => {
 };
 
 //generative next best step
-function actionToColor(action) {
-  // Map backend action types → colors
+// Prefer backend-provided color; otherwise map GA actions to the same palette as backend ACTION_COLORS
+function actionToColor(action, fallbackColor) {
+  if (fallbackColor) return fallbackColor;
   switch (action) {
-    case "replant_forest":
+    case "protect_unburned_refugia":
+      return "#3b82f6"; // blue
+    case "targeted_erosion_control":
+      return "#10b981"; // green
     case "replant_high_severity":
-      return "#1b9e77"; // green-ish
-
+      return "#ef4444"; // red
+    case "fuel_breaks_and_buffer":
+      return "#f59e0b"; // amber
+    case "monitor_and_wait":
+      return "#6b7280"; // gray
+    // legacy names
+    case "replant_forest":
+      return "#1b9e77";
     case "grazing":
-      return "#d95f02"; // orange-ish
-
+      return "#d95f02";
     case "crops":
-      return "#7570b3"; // purple-ish
-
+      return "#7570b3";
     case "conservation":
-      return "#e7298a"; // pink-ish
-
+      return "#e7298a";
     default:
-      return "#666666"; // gray fallback
+      return "#666666";
   }
 }
 
@@ -687,7 +694,7 @@ function renderBestNextSteps(gridPlan) {
       [cell.north, cell.east],
     ];
 
-    const color = actionToColor(cell.action);
+    const color = actionToColor(cell.action, cell.color);
 
     const rect = L.rectangle(bounds, {
       weight: 1,
@@ -1316,6 +1323,49 @@ const clearAllLayers = () => {
   console.log('All layers cleared completely');
 };
 
+// Central handler: set which single overlay is active (or none)
+const setActiveLayer = async (key = null) => {
+  // Uncheck all toggles; re-check the desired one (if any)
+  if (els.layerToggles) {
+    els.layerToggles.forEach((t) => {
+      t.checked = key && t.dataset.layer === key;
+    });
+  }
+
+  clearAllLayers();
+
+  // Nothing selected: hide legend and exit
+  if (!key) {
+    if (els.mapLegend) els.mapLegend.style.display = 'none';
+    syncLayerVisibility();
+    return;
+  }
+
+  if (key === 'burnSeverity' && state.fireId) {
+    await renderBurnSeverityRaster(state.fireId);
+    updateLegend('burnSeverity');
+  } else if (key === 'bestNextSteps' && state.fireId) {
+    // Always fetch fresh scenario so GA uses current segmentation
+    console.log('BestNextSteps: fetching scenario for GA grid (active layer switch)');
+    const scenario = await fetchScenario();
+    if (scenario && scenario.gridPlan && Array.isArray(scenario.gridPlan.cells)) {
+      state.gridPlan = scenario.gridPlan;
+      console.log(
+        `BestNextSteps: rendering GA grid (rows=${scenario.gridPlan.rows}, cols=${scenario.gridPlan.cols}, cells=${scenario.gridPlan.cells.length})`
+      );
+      renderBestNextSteps(state.gridPlan);
+      updateLegend('bestNextSteps');
+    } else {
+      console.warn('BestNextSteps: no gridPlan returned; skipping overlay');
+      state.gridPlan = null;
+      if (els.mapLegend) els.mapLegend.style.display = 'none';
+    }
+  }
+
+  syncLayerVisibility();
+  map.invalidateSize();
+};
+
 // Handle zoom events to ensure only active layer is visible
 map.on('zoomend', () => {
   // After zoom, ensure only the checked layer is visible
@@ -1394,57 +1444,8 @@ map.on('zoomend', () => {
 
 els.layerToggles.forEach((toggle) => {
   toggle.addEventListener('change', async () => {
-    const key = toggle.dataset.layer;
-    
-    // ALWAYS clear ALL layers first - ensures clean state
-    clearAllLayers();
-    
-    // Force map to redraw and clear any cached tiles
-    map.invalidateSize();
-    
-    // Make layers mutually exclusive - uncheck all others when one is checked
-    if (toggle.checked) {
-      // Uncheck all other toggles FIRST
-      els.layerToggles.forEach((otherToggle) => {
-        if (otherToggle !== toggle) {
-          otherToggle.checked = false;
-        }
-      });
-      
-      // Longer delay to ensure clearing is complete and map has refreshed
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
-      // Force multiple map refreshes to clear all cached tiles
-      map.invalidateSize();
-      map._resetView(map.getCenter(), map.getZoom(), { reset: true });
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Now load the selected layer's raster
-      if (state.fireId) {
-        if (key === 'burnSeverity') {
-          await renderBurnSeverityRaster(state.fireId);
-          updateLegend('burnSeverity');
-        } else if (key === 'bestNextSteps') {
-          await renderBestNextStepsRaster(state.fireId);
-          updateLegend('bestNextSteps');
-        }
-      }
-      
-      // Force final refresh after layer is loaded - multiple times to ensure
-      map.invalidateSize();
-      setTimeout(() => map.invalidateSize(), 100);
-      setTimeout(() => map.invalidateSize(), 300);
-    } else {
-      // Layer unchecked - hide legend
-      if (els.mapLegend) {
-        els.mapLegend.style.display = 'none';
-      }
-    }
-    // If unchecked, layers are already cleared by clearAllLayers()
-    
-    // Sync visibility after everything is loaded/cleared
-    syncLayerVisibility();
-    
+    const key = toggle.checked ? toggle.dataset.layer : null;
+    await setActiveLayer(key);
     const label = toggle.nextElementSibling?.textContent?.trim() || 'Layer';
     const stateText = toggle.checked ? 'enabled' : 'disabled';
     if (els.mapTip) {
