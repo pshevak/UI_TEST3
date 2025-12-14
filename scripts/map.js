@@ -76,6 +76,7 @@ const state = {
   selectedSuggestionIndex: -1,
   selectedState: null,
   selectedYear: null,
+  gridPlan: null, // GA 1km grid from scenario
 };
 
 // Expose state globally for external access (e.g., reburn analysis navigation)
@@ -151,8 +152,8 @@ const US_STATES = [
 let fireCatalog = [...FALLBACK_FIRES];
 
 const map = L.map('map', { zoomControl: false }).setView([FALLBACK_FIRES[0].lat, FALLBACK_FIRES[0].lng], 8);
-// Layer for 1km x 1km "Best Next Steps" GA grid
-const bestNextStepsLayer = L.layerGroup().addTo(map);
+// Layer for 1km x 1km "Best Next Steps" GA grid (GA rectangles)
+// (We still use featureLayerGroups.bestNextSteps for toggling)
 
 if (window.L?.esri?.basemapLayer) {
   L.esri.basemapLayer('Topographic').addTo(map);
@@ -164,7 +165,7 @@ if (window.L?.esri?.basemapLayer) {
 
 const featureLayerGroups = {
   burnSeverity: L.layerGroup().addTo(map),
-  bestNextSteps: L.layerGroup().addTo(map),
+  bestNextSteps: L.layerGroup().addTo(map), // GA rectangles + (legacy) raster if enabled
 };
 
 const firePinsLayer = L.layerGroup().addTo(map);
@@ -437,6 +438,7 @@ const renderBurnSeverityRaster = async (fireId) => {
 };
 
 // Function to render best next steps raster - EXACTLY like burn severity, just different image
+// NOTE: we prefer GA grid rectangles (gridPlan). This raster fetch is left as a fallback hook.
 const renderBestNextStepsRaster = async (fireId) => {
   // Check if georaster libraries are loaded
   const parseGeorasterFn = window.parseGeoraster || (window.georaster && window.georaster.parseGeoraster);
@@ -606,8 +608,15 @@ const renderLayerGroup = async (key, features = []) => {
   }
   
   if (key === 'bestNextSteps' && state.fireId) {
+    // Prefer GA gridPlan rectangles
+    if (state.gridPlan) {
+      renderBestNextSteps(state.gridPlan);
+      return;
+    }
+    // Optional fallback to raster if gridPlan missing
+    console.warn('GA gridPlan missing; attempting raster fallback');
     await renderBestNextStepsRaster(state.fireId);
-    return; // Don't render circles for best next steps when raster is available
+    return;
   }
   
   // For other layers, or if raster fails, use circles as before
@@ -660,13 +669,16 @@ function prettyActionLabel(action) {
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-// 🔹 Render the GA 1km grid on the map
+// 🔹 Render the GA 1km grid on the map (uses gridPlan from /api/scenario)
 function renderBestNextSteps(gridPlan) {
-  bestNextStepsLayer.clearLayers();
+  featureLayerGroups.bestNextSteps.clearLayers();
 
   if (!gridPlan || !Array.isArray(gridPlan.cells) || gridPlan.cells.length === 0) {
+    console.warn('No GA gridPlan cells available to render');
     return;
   }
+
+  console.log(`Rendering GA gridPlan with ${gridPlan.cells.length} cells (rows=${gridPlan.rows}, cols=${gridPlan.cols})`);
 
   gridPlan.cells.forEach((cell) => {
     // Expecting north/south/east/west in each cell
@@ -689,10 +701,11 @@ function renderBestNextSteps(gridPlan) {
 
     rect.bindPopup(
       `<b>${label}</b>${scoreText}<br/>
-       Row: ${cell.row ?? "–"}, Col: ${cell.col ?? "–"}`
+       Row: ${cell.row ?? "–"}, Col: ${cell.col ?? "–"}<br/>
+       Severity: ${cell.severity ?? "–"}`
     );
 
-    bestNextStepsLayer.addLayer(rect);
+    featureLayerGroups.bestNextSteps.addLayer(rect);
   });
 }
 
@@ -1039,6 +1052,8 @@ const fetchScenario = async () => {
 
 const renderScenario = async (scenario) => {
   if (!scenario) return;
+  // cache GA grid for best-next-steps layer rendering
+  state.gridPlan = scenario.gridPlan || null;
   await renderLayers(scenario.layers);
   renderHotspots(scenario.markers);
   renderPriorities(scenario.priorities);
@@ -1065,10 +1080,7 @@ const loadScenario = async () => {
   updateForecastLabels();
   setPriorityDisplays();
   const scenario = await fetchScenario();
-  //best next step
-  if (scenario.gridPlan){
-    renderBestNextSteps(scenario.gridPlan);
-  }
+  //best next step GA grid cached; actual rendering happens in renderLayerGroup(bestNextSteps)
   await renderScenario(scenario);
 };
 

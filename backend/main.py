@@ -34,7 +34,7 @@ from PIL import Image
 from rasterio.crs import CRS
 from rasterio.io import MemoryFile
 from rasterio.transform import from_origin
-from reburn.genetic_planner import plan_best_next_steps
+from reburn.genetic_planner import plan_best_next_steps, ACTIONS
 
 
 logger = logging.getLogger("uvicorn.error")
@@ -724,13 +724,36 @@ async def get_scenario(
   insights = generate_insights(fire, timeline_meta)
   stats = format_stats(fire)
 
-  # 🔹 NEW: run the genetic planner using the full raw fire record
-  # fire["_raw"] is the original entry from fires_master.json with westbc/eastbc/northbc/southbc, etc.
+  # 🔹 GA pipeline: fetch severity grid from segmentation, then run GA with fire features
   raw_fire_record = fire.get("_raw", fire)
+  severity_grid: List[List[int]] = []
+  try:
+    logger.info("GA pipeline: calling segmentation for fire %s", fire["id"])
+    seg_data = await run_segmentation(fire["id"])
+    if seg_data.get("mask_png_base64") and seg_data.get("bounds"):
+      png_bytes = base64.b64decode(seg_data["mask_png_base64"])
+      mask = np.array(Image.open(io.BytesIO(png_bytes)).convert("P"), dtype=np.uint8)
+      severity_grid = compute_severity_grid(mask, seg_data.get("bounds"))
+      logger.info(
+        "GA pipeline: severity grid computed for %s (%sx%s)",
+        fire["id"],
+        len(severity_grid),
+        len(severity_grid[0]) if severity_grid else 0,
+      )
+  except Exception:
+    logger.exception("Failed to pull severity grid for GA for fire %s", fire["id"])
+
   grid_plan = plan_best_next_steps(
       fire=raw_fire_record,
       priorities_raw=raw_priorities,  # let GA do its own normalization
       timeline=timeline,
+      severity_grid=severity_grid,
+  )
+  logger.info(
+    "GA pipeline: gridPlan rows=%s cols=%s cells=%s populationScore=%.4f",
+    grid_plan.get("rows"), grid_plan.get("cols"),
+    len(grid_plan.get("cells") or []),
+    grid_plan.get("populationScore", 0.0),
   )
 
   response = {
@@ -1014,48 +1037,100 @@ async def get_best_next_steps_raster(fire_id: str):
   Maps fire_id to MTBS event_id and finds the best_next_steps_grid.tif file.
   """
   fire = pick_fire(fire_id)
+  raw_fire = fire.get("_raw", fire)
   mtbs_event_id = fire.get("mtbs_event_id")
   
-  if not mtbs_event_id:
-    raise HTTPException(
-      status_code=404,
-      detail=f"No MTBS data available for fire: {fire_id}"
-    )
-  
   # GeoTIFF data now lives under UI_TEST3/CA_data/{mtbs_event_id}
-  ca_data_dir = os.path.join(DATA_ROOT, mtbs_event_id)
-  
-  if not os.path.exists(ca_data_dir):
-    raise HTTPException(
-      status_code=404,
-      detail=f"MTBS data directory not found: {ca_data_dir}"
+  if mtbs_event_id:
+    ca_data_dir = os.path.join(DATA_ROOT, mtbs_event_id)
+    if os.path.exists(ca_data_dir):
+      pattern_grid = os.path.join(ca_data_dir, f"{mtbs_event_id}_*_best_next_steps_grid.tif")
+      matching_files = glob.glob(pattern_grid)
+      if not matching_files:
+        pattern = os.path.join(ca_data_dir, f"{mtbs_event_id}_*_best_next_steps.tif")
+        matching_files = glob.glob(pattern)
+      if matching_files:
+        file_path = matching_files[0]  # Use first match
+        return FileResponse(
+          file_path,
+          media_type="image/tiff",
+          headers={
+            "Content-Disposition": f"inline; filename={fire_id}_best_next_steps.tif",
+            "Access-Control-Allow-Origin": "*"
+          }
+        )
+
+  # If no raster exists on disk, generate one from the GA grid.
+  try:
+    severity_grid: List[List[int]] = []
+    try:
+      seg_data = await run_segmentation(fire["id"])
+      if seg_data.get("mask_png_base64") and seg_data.get("bounds"):
+        png_bytes = base64.b64decode(seg_data["mask_png_base64"])
+        mask = np.array(Image.open(io.BytesIO(png_bytes)).convert("P"), dtype=np.uint8)
+        severity_grid = compute_severity_grid(mask, seg_data.get("bounds"))
+    except Exception:
+      logger.warning("Could not fetch severity grid for best-next-steps raster; continuing with zeros")
+
+    default_priorities = {"community": 1/3, "watershed": 1/3, "infrastructure": 1/3}
+    grid_plan = plan_best_next_steps(
+      fire=raw_fire,
+      priorities_raw=default_priorities,
+      timeline=2,
+      severity_grid=severity_grid,
     )
-  
-  # Look for best_next_steps_grid.tif file (prefer grid version)
-  pattern_grid = os.path.join(ca_data_dir, f"{mtbs_event_id}_*_best_next_steps_grid.tif")
-  matching_files = glob.glob(pattern_grid)
-  
-  # Fallback to non-grid version if grid doesn't exist
-  if not matching_files:
-    pattern = os.path.join(ca_data_dir, f"{mtbs_event_id}_*_best_next_steps.tif")
-    matching_files = glob.glob(pattern)
-  
-  if not matching_files:
-    raise HTTPException(
-      status_code=404,
-      detail=f"Best next steps raster not found for fire: {fire_id}"
-    )
-  
-  file_path = matching_files[0]  # Use first match
-  
-  return FileResponse(
-    file_path,
-    media_type="image/tiff",
-    headers={
+
+    rows = grid_plan.get("rows", 0)
+    cols = grid_plan.get("cols", 0)
+    cells = grid_plan.get("cells", [])
+    if rows == 0 or cols == 0 or not cells:
+      raise HTTPException(status_code=404, detail="No grid available for best next steps")
+
+    action_to_idx = {name: idx for idx, name in enumerate(ACTIONS)}
+    data = np.zeros((rows, cols), dtype=np.uint8)
+    # GeoTIFF expects row 0 = north; our grid rows start at south, so flip vertically.
+    for cell in cells:
+      r = int(cell["row"])
+      c = int(cell["col"])
+      arr_r = rows - 1 - r
+      data[arr_r, c] = action_to_idx.get(cell.get("action"), 0)
+
+    # Derive geotransform from overall bbox (north/west from raw fire bounds).
+    try:
+      west = float(raw_fire["westbc"])
+      east = float(raw_fire["eastbc"])
+      north = float(raw_fire["northbc"])
+      south = float(raw_fire["southbc"])
+    except Exception:
+      raise HTTPException(status_code=500, detail="Missing fire bounds for georeferencing best next steps raster")
+
+    cell_width = (east - west) / cols
+    cell_height = (north - south) / rows
+    transform = from_origin(west, north, cell_width, cell_height)
+
+    with MemoryFile() as memfile:
+      with memfile.open(
+        driver="GTiff",
+        height=rows,
+        width=cols,
+        count=1,
+        dtype=data.dtype,
+        crs="EPSG:4326",
+        transform=transform,
+      ) as dst:
+        dst.write(data, 1)
+      tif_bytes = memfile.read()
+
+    return StreamingResponse(io.BytesIO(tif_bytes), media_type="image/tiff", headers={
       "Content-Disposition": f"inline; filename={fire_id}_best_next_steps.tif",
-      "Access-Control-Allow-Origin": "*"
-    }
-  )
+      "Access-Control-Allow-Origin": "*",
+    })
+
+  except HTTPException:
+    raise
+  except Exception as exc:
+    logger.exception("Failed to generate best-next-steps raster for %s", fire_id)
+    raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.get("/api/predict-reburn-risk")
