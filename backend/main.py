@@ -1051,6 +1051,14 @@ async def ask_about_fire(
     Segmentation summary (burn severity model):
     {json.dumps(seg_summary, indent=2)}
 
+    Burn severity classes:
+    0 - High (increased)
+    1 - Low severity
+    2 - Low-Moderate
+    3 - Moderate
+    4 - High
+    5 - Unburned
+
     Question: {question or "Give me a plain-language summary of this fire."}
 
     Guidance:
