@@ -81,6 +81,17 @@ const state = {
 // Expose state globally for external access (e.g., reburn analysis navigation)
 window.state = state;
 
+function openAnalysisDashboard() {
+  // Use the currently selected fire ID, fall back to camp fire if somehow missing
+  const fireId =
+    (state && state.fireId) ||
+    (state && state.currentFire && state.currentFire.id) ||
+    "camp-fire-2018";
+
+  const url = `analysis?fireId=${encodeURIComponent(fireId)}`;
+  window.location.href = url;
+}
+
 // Initialize year dropdown (derived from loaded fire catalog when available)
 const initializeYearDropdown = (years = null) => {
   if (!els.yearSelect) return;
@@ -140,6 +151,8 @@ const US_STATES = [
 let fireCatalog = [...FALLBACK_FIRES];
 
 const map = L.map('map', { zoomControl: false }).setView([FALLBACK_FIRES[0].lat, FALLBACK_FIRES[0].lng], 8);
+// Layer for 1km x 1km "Best Next Steps" GA grid
+const bestNextStepsLayer = L.layerGroup().addTo(map);
 
 if (window.L?.esri?.basemapLayer) {
   L.esri.basemapLayer('Topographic').addTo(map);
@@ -618,6 +631,71 @@ const renderLayers = async (layers = {}) => {
   await Promise.all(promises);
 };
 
+//generative next best step
+function actionToColor(action) {
+  // Map backend action types → colors
+  switch (action) {
+    case "replant_forest":
+    case "replant_high_severity":
+      return "#1b9e77"; // green-ish
+
+    case "grazing":
+      return "#d95f02"; // orange-ish
+
+    case "crops":
+      return "#7570b3"; // purple-ish
+
+    case "conservation":
+      return "#e7298a"; // pink-ish
+
+    default:
+      return "#666666"; // gray fallback
+  }
+}
+
+function prettyActionLabel(action) {
+  if (!action) return "Best next step";
+  return action
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// 🔹 Render the GA 1km grid on the map
+function renderBestNextSteps(gridPlan) {
+  bestNextStepsLayer.clearLayers();
+
+  if (!gridPlan || !Array.isArray(gridPlan.cells) || gridPlan.cells.length === 0) {
+    return;
+  }
+
+  gridPlan.cells.forEach((cell) => {
+    // Expecting north/south/east/west in each cell
+    const bounds = [
+      [cell.south, cell.west],
+      [cell.north, cell.east],
+    ];
+
+    const color = actionToColor(cell.action);
+
+    const rect = L.rectangle(bounds, {
+      weight: 1,
+      fillOpacity: 0.4,
+      color: color,
+    });
+
+    const label = prettyActionLabel(cell.action);
+    const scoreText =
+      typeof cell.score === "number" ? `<br><b>Score:</b> ${cell.score.toFixed(2)}` : "";
+
+    rect.bindPopup(
+      `<b>${label}</b>${scoreText}<br/>
+       Row: ${cell.row ?? "–"}, Col: ${cell.col ?? "–"}`
+    );
+
+    bestNextStepsLayer.addLayer(rect);
+  });
+}
+
 const syncLayerVisibility = () => {
   els.layerToggles.forEach((toggle) => {
     const key = toggle.dataset.layer;
@@ -987,8 +1065,14 @@ const loadScenario = async () => {
   updateForecastLabels();
   setPriorityDisplays();
   const scenario = await fetchScenario();
+  //best next step
+  if (scenario.gridPlan){
+    renderBestNextSteps(scenario.gridPlan);
+  }
   await renderScenario(scenario);
 };
+
+
 
 // Event listeners
 if (els.prioritySliders) {

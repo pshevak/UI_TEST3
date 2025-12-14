@@ -14,9 +14,16 @@ from typing import Any, Dict, List, Optional
 import time
 import requests
 
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+if CURRENT_DIR not in sys.path:
+    sys.path.insert(0, CURRENT_DIR)
+    
 import httpx
 import numpy as np
 import rasterio
+from pathlib import Path
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
@@ -24,6 +31,7 @@ from PIL import Image
 from rasterio.crs import CRS
 from rasterio.io import MemoryFile
 from rasterio.transform import from_origin
+from reburn.genetic_planner import plan_best_next_steps
 
 
 logger = logging.getLogger("uvicorn.error")
@@ -52,6 +60,15 @@ DATA_ROOT = os.path.join(PROJECT_ROOT, "CA_data")
 
 
 app = FastAPI(title="TerraNova Demo API", version="0.2.0")
+# ==== Frontend paths ====
+BASE_DIR = Path(__file__).resolve().parent.parent  # /UI_TEST3
+FRONTEND_DIR = BASE_DIR
+STYLES_DIR = BASE_DIR / "styles"
+SCRIPTS_DIR = BASE_DIR / "scripts"
+
+# Serve CSS & JS
+app.mount("/styles", StaticFiles(directory=STYLES_DIR), name="styles")
+app.mount("/scripts", StaticFiles(directory=SCRIPTS_DIR), name="scripts")
 
 app.add_middleware(
   CORSMiddleware,
@@ -268,6 +285,107 @@ def compute_severity_grid(mask: np.ndarray, bounds) -> List[List[int]]:
       row_vals.append(int(counts.argmax()))
     grid.append(row_vals)
   return grid
+
+async def compute_burn_summary(fire: Dict) -> Dict[str, Any]:
+  """
+  Use the existing segmentation model to summarize burn patterns for a fire.
+
+  This DOES NOT change your teammate's U-Net code. It simply reuses the same
+  segmentation service (run_segmentation) and aggregates the classes into
+  High / Moderate / Low / Unburned for the dashboard pie chart.
+  """
+  fire_id = fire["id"]
+
+  try:
+    data = await run_segmentation(fire_id)
+    mask_b64 = data.get("mask_png_base64")
+    if not mask_b64:
+      raise ValueError("Segmentation response missing mask_png_base64")
+
+    # Decode the segmentation mask (classes 0–5)
+    png_bytes = base64.b64decode(mask_b64)
+    img = Image.open(io.BytesIO(png_bytes)).convert("P")
+    mask = np.array(img, dtype=np.uint8)
+
+    height, width = mask.shape
+    bounds = data.get("bounds")
+    # Default Landsat resolution if bounds are missing
+    pixel_area_m2 = 30.0 * 30.0
+
+    if (
+      bounds
+      and isinstance(bounds, (list, tuple))
+      and len(bounds) == 2
+      and isinstance(bounds[0], (list, tuple))
+      and isinstance(bounds[1], (list, tuple))
+    ):
+      try:
+        minx, miny = bounds[0]
+        maxx, maxy = bounds[1]
+        pixel_width = (maxx - minx) / float(width or 1)
+        pixel_height = (maxy - miny) / float(height or 1)
+        pixel_area_m2 = abs(pixel_width * pixel_height) or pixel_area_m2
+      except Exception:
+        logger.exception("Failed to infer pixel area from bounds; using 30m default")
+
+    # Convert pixel area to acres (1 acre ≈ 4046.8564224 m²)
+    pixel_area_acres = pixel_area_m2 / 4046.8564224
+
+    # Count pixels per class (0–5)
+    counts = np.bincount(mask.flatten(), minlength=6)
+    unburned_px = int(counts[0])
+    low_px = int(counts[1] + counts[2])
+    moderate_px = int(counts[3])
+    high_px = int(counts[4] + counts[5])
+
+    # Aggregate into 4 buckets for the chart
+    labels = ["High", "Moderate", "Low", "Unburned"]
+    class_pixels = [high_px, moderate_px, low_px, unburned_px]
+    total_px = sum(class_pixels) or 1
+
+    percent = [round((c * 100.0) / total_px, 1) for c in class_pixels]
+
+    burned_px = high_px + moderate_px + low_px
+    burned_acres = burned_px * pixel_area_acres
+    unburned_acres = unburned_px * pixel_area_acres
+    total_acres = burned_acres + unburned_acres
+
+    return {
+      "burn": {
+        "labels": labels,
+        "count": [int(c) for c in class_pixels],
+        "percent": percent,
+      },
+      "acres": {
+        "burned": round(float(burned_acres), 1),
+        "unburned": round(float(unburned_acres), 1),
+        "total": round(float(total_acres), 1),
+      },
+    }
+
+  except Exception:
+    # If segmentation fails, fall back to a simple heuristic based on fire["acres"]
+    logger.exception("Failed to compute burn summary from segmentation for %s", fire_id)
+    total_acres = float(fire.get("acres") or 0.0)
+    # Simple, safe fallback: assume 60% burned, split across High/Mod/Low
+    burned_acres = total_acres * 0.6
+    unburned_acres = max(total_acres - burned_acres, 0.0)
+
+    labels = ["High", "Moderate", "Low", "Unburned"]
+    percent = [20.0, 20.0, 20.0, 40.0]
+
+    return {
+      "burn": {
+        "labels": labels,
+        "count": [],  # optional; dashboard only uses labels+percent
+        "percent": percent,
+      },
+      "acres": {
+        "burned": round(float(burned_acres), 1),
+        "unburned": round(float(unburned_acres), 1),
+        "total": round(float(total_acres), 1),
+      },
+    }
 
 
 async def run_segmentation(fire_id: str, model_url: Optional[str] = None) -> Dict:
@@ -606,6 +724,15 @@ async def get_scenario(
   insights = generate_insights(fire, timeline_meta)
   stats = format_stats(fire)
 
+  # 🔹 NEW: run the genetic planner using the full raw fire record
+  # fire["_raw"] is the original entry from fires_master.json with westbc/eastbc/northbc/southbc, etc.
+  raw_fire_record = fire.get("_raw", fire)
+  grid_plan = plan_best_next_steps(
+      fire=raw_fire_record,
+      priorities_raw=raw_priorities,  # let GA do its own normalization
+      timeline=timeline,
+  )
+
   response = {
     "fire": {
       "id": fire["id"],
@@ -626,6 +753,8 @@ async def get_scenario(
     "nextSteps": next_steps,
     "mapTip": f"{timeline_meta['label']} · {timeline_meta['description']}",
     "generatedAt": datetime.now(timezone.utc).isoformat(),
+    # 🔹 NEW: 1km x 1km grid of “best next steps” for the map layer
+    "gridPlan": grid_plan,
   }
   return response
 
@@ -1015,6 +1144,107 @@ async def predict_reburn_risk_endpoint(
     raise HTTPException(status_code=500, detail=f"Prediction error: {str(e)}")
 
 
+@app.get("/api/analysis-summary")
+async def analysis_summary(
+  fireId: str = Query(..., description="Fire identifier for analysis dashboard"),
+):
+  """
+  Aggregate burn-severity and reburn metrics for the analysis dashboard.
+
+  This calls the existing segmentation service (run_segmentation) to compute:
+    - High / Moderate / Low / Unburned % (for the pie chart)
+    - Burned vs unburned acres
+  And it reuses the reburn model / heuristics for:
+    - reburnRiskPercent
+    - historicFireCount
+  """
+  # 1) Resolve fire object from catalog
+  fire = pick_fire(fireId)
+  raw = fire.get("_raw", {}) or {}
+
+  # 2) Burn pattern & acres (from segmentation)
+  burn_acres_summary = await compute_burn_summary(fire)
+
+  # 3) Historic fire count (if available in your JSON)
+  historic_count = raw.get("land_burned_frequency") or raw.get("historic_fire_count") or 0
+  try:
+    historic_count = int(historic_count)
+  except (TypeError, ValueError):
+    historic_count = 0
+
+  # 4) Reburn risk percent & level
+  reburn_percent = 0
+  reburn_level = "Low"
+
+  if REBURN_MODEL_AVAILABLE:
+    try:
+      prediction = predict_reburn_risk(fire["id"], return_confidence=True)
+      prob = float(prediction.get("reburn_probability", 0.0))
+      reburn_percent = int(round(prob * 100))
+      reburn_level = prediction.get("risk_level", "Low")
+    except Exception as e:
+      logger.warning("Error computing reburn risk in analysis-summary for %s: %s", fire["id"], e)
+
+  # If model not available or failed, fall back to frequency-based heuristic
+  if reburn_percent == 0:
+    freq = historic_count
+    if freq >= 3:
+      reburn_percent, reburn_level = 70, "High"
+    elif freq == 2:
+      reburn_percent, reburn_level = 50, "Medium"
+    elif freq == 1:
+      reburn_percent, reburn_level = 30, "Medium"
+    else:
+      reburn_percent, reburn_level = 10, "Low"
+
+  return {
+    "fireId": fire["id"],
+    "fireName": fire["name"],
+    "state": fire["state"],
+    "region": fire.get("region"),
+    "acres": burn_acres_summary["acres"],
+    "burn": burn_acres_summary["burn"],
+    "reburnRiskPercent": reburn_percent,
+    "reburnRiskLevel": reburn_level,
+    "historicFireCount": historic_count,
+    "generatedAt": datetime.now(timezone.utc).isoformat(),
+  }
+
 @app.get("/api/health")
 async def health_check():
   return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat(), "reburn_model": REBURN_MODEL_AVAILABLE}
+
+# ==== HTML pages ====
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_index():
+    with open(FRONTEND_DIR / "index.html", "r", encoding="utf-8") as f:
+        return f.read()
+
+
+@app.get("/analysis", response_class=HTMLResponse)
+async def serve_analysis():
+    with open(FRONTEND_DIR / "analysis.html", "r", encoding="utf-8") as f:
+        return f.read()
+
+
+@app.get("/map", response_class=HTMLResponse)
+async def serve_map():
+    with open(FRONTEND_DIR / "map.html", "r", encoding="utf-8") as f:
+        return f.read()
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def serve_login():
+    with open(FRONTEND_DIR / "login.html", "r", encoding="utf-8") as f:
+        return f.read()
+
+
+@app.get("/api/best-next-steps")
+def api_best_next_steps(fireId: str = Query(..., alias="fireId")):
+    """
+    Returns a 1km x 1km grid with recommended 'best next step' per cell
+    for the selected fire.
+    """
+    result = plan_best_next_steps(fireId)
+    return result
