@@ -54,6 +54,19 @@
             style="font-size:13px; line-height:1.5; display:flex; flex-direction:column; gap:8px;">
           </ul>
         </article>
+
+        <!-- 3) Ask LLM -->
+        <article class="analysis-card">
+          <h3 style="margin-bottom:8px;">Ask about this fire</h3>
+          <p class="muted" style="margin-bottom:12px; font-size:13px;">
+            Ask in plain language. The assistant uses the fire record, segmentation summary, and reburn signals.
+          </p>
+          <div style="display:flex; flex-direction:column; gap:8px;">
+            <textarea id="askInput" rows="3" placeholder="e.g., How severe was this fire and what should be monitored next?" style="width:100%; resize:vertical; border-radius:12px; padding:10px; border:1px solid var(--border); background:var(--panel-muted); color:var(--text);"></textarea>
+            <button id="askButton" class="btn" style="align-self:flex-start;">Ask TerraNova assistant</button>
+            <div id="askResponse" class="muted small" style="min-height:40px;"></div>
+          </div>
+        </article>
       </section>
     </div>
     
@@ -246,6 +259,48 @@
           console.warn("Dashboard failed to load summary:", e);
         }
       })();
+
+      // Ask LLM (Gemini-backed)
+      const askInputEl = document.getElementById("askInput");
+      const askButtonEl = document.getElementById("askButton");
+      const askResponseEl = document.getElementById("askResponse");
+
+      async function askLLM() {
+        if (!askInputEl || !askButtonEl || !askResponseEl) return;
+        const question = (askInputEl.value || "").trim();
+        if (!question) {
+          askResponseEl.textContent = "Please type a question first.";
+          return;
+        }
+
+        askButtonEl.disabled = true;
+        askButtonEl.textContent = "Thinking...";
+        askResponseEl.textContent = "Generating answer...";
+
+        try {
+          const params = new URLSearchParams({ fireId, question });
+          const resp = await fetch(`${API_BASE}/api/ask?${params.toString()}`);
+          if (!resp.ok) throw new Error("Failed to fetch answer");
+          const data = await resp.json();
+          askResponseEl.innerHTML = `<p><strong>Q:</strong> ${question}</p><p>${data.answer || "No answer available."}</p>`;
+        } catch (err) {
+          console.warn("Ask LLM failed:", err);
+          askResponseEl.textContent = "Could not generate an answer right now. Please try again.";
+        } finally {
+          askButtonEl.disabled = false;
+          askButtonEl.textContent = "Ask TerraNova assistant";
+        }
+      }
+
+      if (askButtonEl && askInputEl) {
+        askButtonEl.addEventListener("click", askLLM);
+        askInputEl.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            askLLM();
+          }
+        });
+      }
     </script>
 
     

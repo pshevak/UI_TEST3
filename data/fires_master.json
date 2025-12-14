@@ -9541,8 +9541,8 @@
     "gw_depth_ft": 49.69556729847662,
     "ph_val": 6.927012506343811,
     "precip_mm": 541.333763726326,
-    "land_burned_frequency": 0.0,
-    "reburn": false,
+    "land_burned_frequency": 3.0,
+    "reburn": true,
     "fire_id": "ca3519911969620240713",
     "fire_name": "Monitoring Trends in Burn Severity assessment of Event ID - ca3519911969620240713"
   },

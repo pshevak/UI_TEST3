@@ -372,6 +372,19 @@
             <!-- Populated by JavaScript -->
           </div>
         </article>
+
+        <!-- Card 4: Ask the assistant -->
+        <article class="analysis-card">
+          <h3>Ask about this fire</h3>
+          <p style="font-size:0.9rem; color: var(--muted); margin-bottom:12px;">
+            Get plain-language answers using the fire record, reburn signals, and segmentation summary.
+          </p>
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <textarea id="reburnAskInput" rows="3" placeholder="e.g., What does the reburn risk mean for nearby communities?" style="width:100%; resize:vertical; border-radius:12px; padding:10px; border:1px solid var(--border); background:var(--panel-muted); color:var(--text);"></textarea>
+            <button class="btn" id="reburnAskButton" style="align-self:flex-start;">Ask TerraNova assistant</button>
+            <div id="reburnAskResponse" class="muted small" style="min-height:40px;"></div>
+          </div>
+        </article>
       </section>
     </div>
 
@@ -398,6 +411,7 @@
       let predictionData = null;
       let riskGaugeChart = null;
       let riskDistributionChart = null;
+      let currentFireId = null;
 
       // Parse URL parameter
       function getFireIdFromUrl() {
@@ -787,6 +801,7 @@
       // Initialize page
       async function init() {
         const fireId = getFireIdFromUrl();
+        currentFireId = fireId;
 
         if (!fireId) {
           showError('No fire ID provided. Please visit this page with a fire ID parameter, e.g., reburn-analysis.html?fireId=ca3617411872220040812');
@@ -828,6 +843,49 @@
 
         URL.revokeObjectURL(url);
       });
+
+      // Ask LLM (Gemini-backed)
+      const reburnAskInput = document.getElementById('reburnAskInput');
+      const reburnAskButton = document.getElementById('reburnAskButton');
+      const reburnAskResponse = document.getElementById('reburnAskResponse');
+
+      async function askReburnAssistant() {
+        if (!reburnAskInput || !reburnAskButton || !reburnAskResponse) return;
+        const question = (reburnAskInput.value || '').trim();
+        if (!question) {
+          reburnAskResponse.textContent = 'Please enter a question.';
+          return;
+        }
+        const fireId = currentFireId || getFireIdFromUrl();
+
+        reburnAskButton.disabled = true;
+        reburnAskButton.textContent = 'Thinking...';
+        reburnAskResponse.textContent = 'Generating answer...';
+
+        try {
+          const params = new URLSearchParams({ fireId, question });
+          const resp = await fetch(`${API_BASE}/api/ask?${params.toString()}`);
+          if (!resp.ok) throw new Error('Failed to fetch answer');
+          const data = await resp.json();
+          reburnAskResponse.innerHTML = `<p><strong>Q:</strong> ${question}</p><p>${data.answer || 'No answer available.'}</p>`;
+        } catch (err) {
+          console.warn('Ask assistant failed:', err);
+          reburnAskResponse.textContent = 'Unable to generate an answer right now. Please try again.';
+        } finally {
+          reburnAskButton.disabled = false;
+          reburnAskButton.textContent = 'Ask TerraNova assistant';
+        }
+      }
+
+      if (reburnAskButton && reburnAskInput) {
+        reburnAskButton.addEventListener('click', askReburnAssistant);
+        reburnAskInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            askReburnAssistant();
+          }
+        });
+      }
 
       // Initialize on page load
       init();
