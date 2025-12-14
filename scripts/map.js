@@ -754,10 +754,11 @@ const updateLegend = (layerKey) => {
     bestNextSteps: {
       title: 'Best Next Steps',
       items: [
-        { color: 'rgba(128, 128, 128, 0.78)', label: 'Abandon/Monitor', tooltip: 'Monitor natural recovery, minimal intervention needed' },
-        { color: 'rgba(255, 255, 0, 0.78)', label: 'Fuel Reduction', tooltip: 'Reduce fuel loads to prevent future fires' },
-        { color: 'rgba(0, 102, 0, 0.78)', label: 'Reforest', tooltip: 'Priority areas for tree planting and forest restoration' },
-        { color: 'rgba(153, 102, 51, 0.78)', label: 'Soil Stabilization', tooltip: 'Urgent soil stabilization needed to prevent erosion' }
+        { color: '#3b82f6', label: 'Protect unburned refugia', tooltip: 'Buffer and shield intact patches from further damage' },
+        { color: '#10b981', label: 'Targeted erosion control', tooltip: 'Stabilize vulnerable slopes and channels to curb erosion' },
+        { color: '#ef4444', label: 'Replant high severity', tooltip: 'Revegetate areas with severe burn to jump-start recovery' },
+        { color: '#f59e0b', label: 'Fuel breaks and buffer', tooltip: 'Create/strengthen breaks to limit future fire spread' },
+        { color: '#6b7280', label: 'Monitor and wait', tooltip: 'Observe natural recovery; defer action for now' },
       ]
     }
   };
