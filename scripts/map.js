@@ -76,10 +76,22 @@ const state = {
   selectedSuggestionIndex: -1,
   selectedState: null,
   selectedYear: null,
+  gridPlan: null, // GA 1km grid from scenario
 };
 
 // Expose state globally for external access (e.g., reburn analysis navigation)
 window.state = state;
+
+function openAnalysisDashboard() {
+  // Use the currently selected fire ID, fall back to camp fire if somehow missing
+  const fireId =
+    (state && state.fireId) ||
+    (state && state.currentFire && state.currentFire.id) ||
+    "camp-fire-2018";
+
+  const url = `analysis.html?fireId=${encodeURIComponent(fireId)}`;
+  window.location.href = url;
+}
 
 // Initialize year dropdown (derived from loaded fire catalog when available)
 const initializeYearDropdown = (years = null) => {
@@ -140,6 +152,8 @@ const US_STATES = [
 let fireCatalog = [...FALLBACK_FIRES];
 
 const map = L.map('map', { zoomControl: false }).setView([FALLBACK_FIRES[0].lat, FALLBACK_FIRES[0].lng], 8);
+// Layer for 1km x 1km "Best Next Steps" GA grid (GA rectangles)
+// (We still use featureLayerGroups.bestNextSteps for toggling)
 
 if (window.L?.esri?.basemapLayer) {
   L.esri.basemapLayer('Topographic').addTo(map);
@@ -151,7 +165,7 @@ if (window.L?.esri?.basemapLayer) {
 
 const featureLayerGroups = {
   burnSeverity: L.layerGroup().addTo(map),
-  bestNextSteps: L.layerGroup().addTo(map),
+  bestNextSteps: L.layerGroup().addTo(map), // GA rectangles + (legacy) raster if enabled
 };
 
 const firePinsLayer = L.layerGroup().addTo(map);
@@ -424,6 +438,7 @@ const renderBurnSeverityRaster = async (fireId) => {
 };
 
 // Function to render best next steps raster - EXACTLY like burn severity, just different image
+// NOTE: we prefer GA grid rectangles (gridPlan). This raster fetch is left as a fallback hook.
 const renderBestNextStepsRaster = async (fireId) => {
   // Check if georaster libraries are loaded
   const parseGeorasterFn = window.parseGeoraster || (window.georaster && window.georaster.parseGeoraster);
@@ -593,8 +608,15 @@ const renderLayerGroup = async (key, features = []) => {
   }
   
   if (key === 'bestNextSteps' && state.fireId) {
+    // Prefer GA gridPlan rectangles
+    if (state.gridPlan) {
+      renderBestNextSteps(state.gridPlan);
+      return;
+    }
+    // Optional fallback to raster if gridPlan missing
+    console.warn('GA gridPlan missing; attempting raster fallback');
     await renderBestNextStepsRaster(state.fireId);
-    return; // Don't render circles for best next steps when raster is available
+    return;
   }
   
   // For other layers, or if raster fails, use circles as before
@@ -617,6 +639,82 @@ const renderLayers = async (layers = {}) => {
   });
   await Promise.all(promises);
 };
+
+//generative next best step
+// Prefer backend-provided color; otherwise map GA actions to the same palette as backend ACTION_COLORS
+function actionToColor(action, fallbackColor) {
+  if (fallbackColor) return fallbackColor;
+  switch (action) {
+    case "protect_unburned_refugia":
+      return "#3b82f6"; // blue
+    case "targeted_erosion_control":
+      return "#10b981"; // green
+    case "replant_high_severity":
+      return "#ef4444"; // red
+    case "fuel_breaks_and_buffer":
+      return "#f59e0b"; // amber
+    case "monitor_and_wait":
+      return "#6b7280"; // gray
+    // legacy names
+    case "replant_forest":
+      return "#1b9e77";
+    case "grazing":
+      return "#d95f02";
+    case "crops":
+      return "#7570b3";
+    case "conservation":
+      return "#e7298a";
+    default:
+      return "#666666";
+  }
+}
+
+function prettyActionLabel(action) {
+  if (!action) return "Best next step";
+  return action
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// 🔹 Render the GA 1km grid on the map (uses gridPlan from /api/scenario)
+function renderBestNextSteps(gridPlan) {
+  featureLayerGroups.bestNextSteps.clearLayers();
+
+  if (!gridPlan || !Array.isArray(gridPlan.cells) || gridPlan.cells.length === 0) {
+    console.warn('No GA gridPlan cells available to render');
+    return;
+  }
+
+  console.log(`Rendering GA gridPlan with ${gridPlan.cells.length} cells (rows=${gridPlan.rows}, cols=${gridPlan.cols})`);
+
+  gridPlan.cells.forEach((cell) => {
+    // Expecting north/south/east/west in each cell
+    const bounds = [
+      [cell.south, cell.west],
+      [cell.north, cell.east],
+    ];
+
+    const color = actionToColor(cell.action, cell.color);
+
+    const rect = L.rectangle(bounds, {
+      weight: 1,
+      fillOpacity: 0.4,
+      color: color,
+    });
+
+    const label = prettyActionLabel(cell.action);
+    const scoreText =
+      typeof cell.score === "number" ? `<br><b>Score:</b> ${cell.score.toFixed(2)}` : "";
+
+    rect.bindPopup(
+      `<b>${label}</b>${scoreText}<br/>
+       Row: ${cell.row ?? "–"}, Col: ${cell.col ?? "–"}<br/>
+       Severity: ${cell.severity ?? "–"}`
+    );
+
+    featureLayerGroups.bestNextSteps.addLayer(rect);
+  });
+}
 
 const syncLayerVisibility = () => {
   els.layerToggles.forEach((toggle) => {
@@ -656,10 +754,11 @@ const updateLegend = (layerKey) => {
     bestNextSteps: {
       title: 'Best Next Steps',
       items: [
-        { color: 'rgba(128, 128, 128, 0.78)', label: 'Abandon/Monitor', tooltip: 'Monitor natural recovery, minimal intervention needed' },
-        { color: 'rgba(255, 255, 0, 0.78)', label: 'Fuel Reduction', tooltip: 'Reduce fuel loads to prevent future fires' },
-        { color: 'rgba(0, 102, 0, 0.78)', label: 'Reforest', tooltip: 'Priority areas for tree planting and forest restoration' },
-        { color: 'rgba(153, 102, 51, 0.78)', label: 'Soil Stabilization', tooltip: 'Urgent soil stabilization needed to prevent erosion' }
+        { color: '#3b82f6', label: 'Protect unburned refugia', tooltip: 'Buffer and shield intact patches from further damage' },
+        { color: '#10b981', label: 'Targeted erosion control', tooltip: 'Stabilize vulnerable slopes and channels to curb erosion' },
+        { color: '#ef4444', label: 'Replant high severity', tooltip: 'Revegetate areas with severe burn to jump-start recovery' },
+        { color: '#f59e0b', label: 'Fuel breaks and buffer', tooltip: 'Create/strengthen breaks to limit future fire spread' },
+        { color: '#6b7280', label: 'Monitor and wait', tooltip: 'Observe natural recovery; defer action for now' },
       ]
     }
   };
@@ -961,6 +1060,8 @@ const fetchScenario = async () => {
 
 const renderScenario = async (scenario) => {
   if (!scenario) return;
+  // cache GA grid for best-next-steps layer rendering
+  state.gridPlan = scenario.gridPlan || null;
   await renderLayers(scenario.layers);
   renderHotspots(scenario.markers);
   renderPriorities(scenario.priorities);
@@ -987,8 +1088,11 @@ const loadScenario = async () => {
   updateForecastLabels();
   setPriorityDisplays();
   const scenario = await fetchScenario();
+  //best next step GA grid cached; actual rendering happens in renderLayerGroup(bestNextSteps)
   await renderScenario(scenario);
 };
+
+
 
 // Event listeners
 if (els.prioritySliders) {
@@ -1220,6 +1324,49 @@ const clearAllLayers = () => {
   console.log('All layers cleared completely');
 };
 
+// Central handler: set which single overlay is active (or none)
+const setActiveLayer = async (key = null) => {
+  // Uncheck all toggles; re-check the desired one (if any)
+  if (els.layerToggles) {
+    els.layerToggles.forEach((t) => {
+      t.checked = key && t.dataset.layer === key;
+    });
+  }
+
+  clearAllLayers();
+
+  // Nothing selected: hide legend and exit
+  if (!key) {
+    if (els.mapLegend) els.mapLegend.style.display = 'none';
+    syncLayerVisibility();
+    return;
+  }
+
+  if (key === 'burnSeverity' && state.fireId) {
+    await renderBurnSeverityRaster(state.fireId);
+    updateLegend('burnSeverity');
+  } else if (key === 'bestNextSteps' && state.fireId) {
+    // Always fetch fresh scenario so GA uses current segmentation
+    console.log('BestNextSteps: fetching scenario for GA grid (active layer switch)');
+    const scenario = await fetchScenario();
+    if (scenario && scenario.gridPlan && Array.isArray(scenario.gridPlan.cells)) {
+      state.gridPlan = scenario.gridPlan;
+      console.log(
+        `BestNextSteps: rendering GA grid (rows=${scenario.gridPlan.rows}, cols=${scenario.gridPlan.cols}, cells=${scenario.gridPlan.cells.length})`
+      );
+      renderBestNextSteps(state.gridPlan);
+      updateLegend('bestNextSteps');
+    } else {
+      console.warn('BestNextSteps: no gridPlan returned; skipping overlay');
+      state.gridPlan = null;
+      if (els.mapLegend) els.mapLegend.style.display = 'none';
+    }
+  }
+
+  syncLayerVisibility();
+  map.invalidateSize();
+};
+
 // Handle zoom events to ensure only active layer is visible
 map.on('zoomend', () => {
   // After zoom, ensure only the checked layer is visible
@@ -1298,57 +1445,8 @@ map.on('zoomend', () => {
 
 els.layerToggles.forEach((toggle) => {
   toggle.addEventListener('change', async () => {
-    const key = toggle.dataset.layer;
-    
-    // ALWAYS clear ALL layers first - ensures clean state
-    clearAllLayers();
-    
-    // Force map to redraw and clear any cached tiles
-    map.invalidateSize();
-    
-    // Make layers mutually exclusive - uncheck all others when one is checked
-    if (toggle.checked) {
-      // Uncheck all other toggles FIRST
-      els.layerToggles.forEach((otherToggle) => {
-        if (otherToggle !== toggle) {
-          otherToggle.checked = false;
-        }
-      });
-      
-      // Longer delay to ensure clearing is complete and map has refreshed
-      await new Promise(resolve => setTimeout(resolve, 200));
-      
-      // Force multiple map refreshes to clear all cached tiles
-      map.invalidateSize();
-      map._resetView(map.getCenter(), map.getZoom(), { reset: true });
-      await new Promise(resolve => setTimeout(resolve, 100));
-      
-      // Now load the selected layer's raster
-      if (state.fireId) {
-        if (key === 'burnSeverity') {
-          await renderBurnSeverityRaster(state.fireId);
-          updateLegend('burnSeverity');
-        } else if (key === 'bestNextSteps') {
-          await renderBestNextStepsRaster(state.fireId);
-          updateLegend('bestNextSteps');
-        }
-      }
-      
-      // Force final refresh after layer is loaded - multiple times to ensure
-      map.invalidateSize();
-      setTimeout(() => map.invalidateSize(), 100);
-      setTimeout(() => map.invalidateSize(), 300);
-    } else {
-      // Layer unchecked - hide legend
-      if (els.mapLegend) {
-        els.mapLegend.style.display = 'none';
-      }
-    }
-    // If unchecked, layers are already cleared by clearAllLayers()
-    
-    // Sync visibility after everything is loaded/cleared
-    syncLayerVisibility();
-    
+    const key = toggle.checked ? toggle.dataset.layer : null;
+    await setActiveLayer(key);
     const label = toggle.nextElementSibling?.textContent?.trim() || 'Layer';
     const stateText = toggle.checked ? 'enabled' : 'disabled';
     if (els.mapTip) {

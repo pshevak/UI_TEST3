@@ -11,6 +11,7 @@ import os
 import joblib
 import json
 import pandas as pd
+import numpy as np
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -34,6 +35,13 @@ def load_model() -> object:
     """Load the trained Random Forest model from disk."""
     global _model
     if _model is None:
+        # Compatibility shim: some saved pipelines (numpy>=2) reference numpy._core
+        # which doesn't exist on numpy 1.x. Map it to numpy.core so unpickling works.
+        import types, sys as _sys
+        if "numpy._core" not in _sys.modules:
+            _sys.modules["numpy._core"] = types.ModuleType("numpy._core")
+            _sys.modules["numpy._core"].__dict__.update(np.core.__dict__)
+
         if not os.path.exists(MODEL_PATH):
             raise FileNotFoundError(
                 f"Model file not found: {MODEL_PATH}\n"

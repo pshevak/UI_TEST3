@@ -37,152 +37,218 @@
           <h3 style="margin-bottom:8px;">Burn pattern overview</h3>
 
           <canvas id="burnPieChart"></canvas>
-
+         <!-- task 7 and 8 -->
           <div style="margin-top:14px; font-size:13px; opacity:0.9;">
-            <div>Acres burned : <b>153,336</b></div>
-            <div>Acres unburned : <b>48,200</b></div>
-            <div>Estimated reburn risk : <b>32%</b></div>
-            <div>Historic fire count in this area : <b>3 events</b></div>
+            <div>Acres burned : <b id="acresBurned">—</b></div>
+            <div>Acres unburned : <b id="acresUnburned">—</b></div>
+            <div>Estimated reburn risk : <b id="reburnRiskPct">—</b></div>
+            <div>Historic fire count in this area : <b id="historicCount">—</b></div>
           </div>
         </article>
 
         <!-- 2) Best next steps summary -->
         <article class="analysis-card">
           <h3 style="margin-bottom:8px;">Best next steps</h3>
-          <ul style="font-size:13px; line-height:1.5; display:flex; flex-direction:column; gap:8px;">
-            <li>
-              <b>Stabilize high-severity slopes above key roads.</b><br />
-              <span class="muted small">
-                High burn fraction and steep terrain make these segments most likely to shed debris into access routes.
-              </span>
-            </li>
-            <li>
-              <b>Target replanting in repeatedly burned grids.</b><br />
-              <span class="muted small">
-                Historic fire count is highest in three sub-basins, suggesting the need for more fire-resilient species mix.
-              </span>
-            </li>
-            <li>
-              <b>Protect intakes and small community water systems.</b><br />
-              <span class="muted small">
-                Downstream unburned areas rely on headwaters that now sit in moderate-to-high burn zones.
-              </span>
-            </li>
-            <li>
-              <b>Prepare a public-facing map + briefing.</b><br />
-              <span class="muted small">
-                A simple map with burn classes and mitigation priorities helps align residents, agencies, and funders.
-              </span>
-            </li>
+          <ul
+            id="nextStepsList"
+            style="font-size:13px; line-height:1.5; display:flex; flex-direction:column; gap:8px;">
           </ul>
         </article>
       </section>
     </div>
-
-    <!-- Chart.js for the pie chart -->
+    
+    
+    <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
     <script>
-      // ------------------------------
-      // Data for burn pattern
-      // ------------------------------
-      const burnCategories = ["High severity", "Moderate", "Low", "Unburned"];
-      const burnValues = [35, 25, 15, 25]; // % breakdown – replace later
+      const params = new URLSearchParams(window.location.search);
+      const fireId = params.get("fireId") || "camp-fire-2018";
+      const API_BASE = window.TERRANOVA_API_BASE || "http://localhost:8001";
+      const fireLabelEl = document.getElementById("fireLabel");
+      if (fireLabelEl) {
+        if (params.get("fireId")) {
+          fireLabelEl.textContent = `Fire: ${fireId}`;
+        } else {
+          fireLabelEl.textContent = `Fire: ${fireId} (default)`;
+        }
+      }
 
-      const burnCtx = document.getElementById("burnPieChart");
+      let chartInstance = null;
 
-      if (burnCtx && window.Chart) {
-        new Chart(burnCtx, {
+      // risk colors: High, Moderate, Low, Unburned
+      const RISK_COLORS = ["#d73027", "#fc8d59", "#fee08b", "#1a9850"];
+
+      function renderPie(labels, values) {
+        const canvas = document.getElementById("burnPieChart");
+        if (!canvas || !window.Chart) return;
+
+        if (chartInstance) chartInstance.destroy();
+
+        chartInstance = new Chart(canvas, {
           type: "pie",
           data: {
-            labels: burnCategories,
-            datasets: [
-              {
-                data: burnValues,
-                backgroundColor: [
-                  "#ff4e1f", // high
-                  "#ff9b2f", // moderate
-                  "#ffd262", // low
-                  "#3fbf7f"  // unburned
-                ]
-              }
-            ]
+            labels,
+            datasets: [{
+              data: values,
+              backgroundColor: RISK_COLORS,
+              borderColor: "#ffffff",
+              borderWidth: 2
+            }]
           },
           options: {
             responsive: true,
-            plugins: {
-              legend: {
-                position: "bottom",
-                labels: {
-                  boxWidth: 14,
-                  font: { size: 12 }
-                }
-              }
-            }
+            plugins: { legend: { position: "bottom" } }
           }
         });
       }
 
-      const downloadBtn = document.getElementById("downloadReportBtn");
-
-      function buildReport() {
-        // These values are all placeholders you can swap later
-        const burnedAcres = 153336;
-        const unburnedAcres = 48200;
-        const reburnRisk = 32; // %
-        const historicFires = 3;
-
-        const reportLines = [
-          "TerraNova – Burn Severity Analysis Report",
-          "====================================================",
-          "",
-          "Region: Camp Fire · CA (placeholder)",
-          "Current snapshot:",
-          `  - Acres burned:   ${burnedAcres.toLocaleString()} ac`,
-          `  - Acres unburned: ${unburnedAcres.toLocaleString()} ac`,
-          `  - Estimated reburn risk: ${reburnRisk}%`,
-          `  - Historic fire count in this area: ${historicFires}`,
-          "",
-          "Burn pattern breakdown (approx, % of footprint):",
-          `  - High severity:    ${burnValues[0]}%`,
-          `  - Moderate severity:${burnValues[1]}%`,
-          `  - Low severity:     ${burnValues[2]}%`,
-          `  - Unburned:         ${burnValues[3]}%`,
-          "",
-          "Best next steps (draft):",
-          "  1) Stabilize high-severity slopes above key roads.",
-          "     Rationale: High burn fraction plus slope increases debris-flow risk into evacuation and service routes.",
-          "",
-          "  2) Target replanting in repeatedly burned grids.",
-          "     Rationale: Areas with multiple historic burns may benefit from more fire-resilient species and spacing strategies.",
-          "",
-          "  3) Protect intakes and small community water systems.",
-          "     Rationale: Headwaters in burned zones can deliver ash and sediment into vulnerable treatment systems.",
-          "",
-          "  4) Prepare a public-facing map + briefing.",
-          "     Rationale: Shared visuals and plain-language summaries help align agencies, communities, and funders.",
-          "",
-          "NOTE: All values in this report are placeholders for demo purposes.",
-        ];
-
-        return reportLines.join("\n");
+      async function loadSummary() {
+        const res = await fetch(`${API_BASE}/api/analysis-summary?fireId=${encodeURIComponent(fireId)}`);
+        if (!res.ok) throw new Error("Failed to load analysis summary");
+        return await res.json();
       }
 
-      if (downloadBtn) {
-        downloadBtn.addEventListener("click", () => {
-          const reportText = buildReport();
-          const blob = new Blob([reportText], { type: "text/plain" });
-          const url = URL.createObjectURL(blob);
-
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = "terranova_analysis_report_demo.txt";
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-
-          URL.revokeObjectURL(url);
-        });
+      // (temporary) if you haven’t implemented dynamic steps yet:
+      function renderNextSteps(summary) {
+        const ul = document.getElementById("nextStepsList");
+        if (!ul) return;
+      
+        const labels = summary.burn.labels || [];
+        const perc   = summary.burn.percent || [];
+      
+        const highIdx = labels.findIndex(l => l.toLowerCase().includes("high"));
+        const modIdx  = labels.findIndex(l => l.toLowerCase().includes("moderate"));
+        const lowIdx  = labels.findIndex(l => l.toLowerCase().includes("low"));
+        const unbIdx  = labels.findIndex(l => l.toLowerCase().includes("unburn"));
+      
+        const high = highIdx >= 0 ? perc[highIdx] : 0;
+        const mod  = modIdx  >= 0 ? perc[modIdx]  : 0;
+        const low  = lowIdx  >= 0 ? perc[lowIdx]  : 0;
+        const unb  = unbIdx  >= 0 ? perc[unbIdx]  : 0;
+      
+        const burnedAcres = summary.acres?.burned ?? 0;
+        const risk = summary.reburnRiskPercent ?? 0;
+        const hist = summary.historicFireCount ?? 0;
+      
+        const intenseBurn = high + mod; // high + moderate %
+      
+        const steps = [];
+      
+        function addStep(horizon, title, note) {
+          steps.push({ horizon, title, note });
+        }
+      
+        // --- Immediate horizon (0–2 weeks) ---
+        if (intenseBurn >= 50) {
+          const priorityAcres = Math.round(burnedAcres * Math.min(intenseBurn / 100, 0.30));
+          addStep(
+            "Immediate (0–2 weeks)",
+            "Stabilize the most severely burned slopes above roads, homes, and streams.",
+            `High+moderate severity covers ~${intenseBurn.toFixed(0)}% of the footprint. 
+             Focus emergency treatments on roughly the top 20–30% of burned area (~${priorityAcres.toLocaleString()} ac) 
+             with the steepest slopes and downstream assets.`
+          );
+        } else if (high >= 25) {
+          const priorityAcres = Math.round(burnedAcres * 0.2);
+          addStep(
+            "Immediate (0–2 weeks)",
+            "Treat concentrated high-severity patches before the first major storms.",
+            `High severity covers ~${high.toFixed(0)}% of the footprint. Prioritize the worst 20% 
+             (~${priorityAcres.toLocaleString()} ac) near roads, culverts, and water intakes for mulching, wattles, or check structures.`
+          );
+        } else {
+          addStep(
+            "Immediate (0–2 weeks)",
+            "Confirm there are no critical hot spots needing emergency erosion control.",
+            `High severity is relatively limited (~${high.toFixed(0)}%). Use the TerraNova map to visually scan high-severity cells near infrastructure and 
+             confirm whether any targeted, small-footprint treatment is needed.`
+          );
+        }
+      
+        // --- Short-term horizon (2–12 months) – reburn & vegetation ---
+        if (hist >= 3 || risk >= 40) {
+          addStep(
+            "Short-term (2–12 months)",
+            "Design a reburn-aware replanting plan in repeat-burn grids.",
+            `Historic fires: ${hist}; estimated reburn risk: ${risk}%. In grids with repeated burns, 
+             shift toward more fire-resilient species, wider spacing, and fuel breaks tied to existing roads and ridgelines.`
+          );
+        } else if (risk >= 20) {
+          addStep(
+            "Short-term (2–12 months)",
+            "Pilot more fire-resilient species in moderate-risk sub-basins.",
+            `Reburn risk is moderate (~${risk}%). Use the burn map to identify sub-basins with the most high+moderate area 
+             and test mixed species / spacing that can better tolerate future fire.`
+          );
+        } else {
+          addStep(
+            "Short-term (2–12 months)",
+            "Support natural regeneration and light-touch planting in lower-risk areas.",
+            `Current reburn risk (~${risk}%) and limited high-severity extent suggest natural regeneration may handle much of the recovery. 
+             Target planting to riparian corridors and highly erodible soils.`
+          );
+        }
+      
+        // --- Monitoring & protection horizon ---
+        if (unb >= 25) {
+          addStep(
+            "Monitoring & protection (1–5 years)",
+            "Protect unburned refugia and buffer them from future fire spread.",
+            `Unburned areas still make up ~${unb.toFixed(0)}% of the footprint. Use them as anchors for habitat and community buffers, 
+             and prioritize fuel breaks / defensible space at the interface between burned and unburned grids.`
+          );
+        } else {
+          addStep(
+            "Monitoring & protection (1–5 years)",
+            "Track recovery and rebuild buffers around the few remaining unburned pockets.",
+            `Unburned share is small (~${unb.toFixed(0)}%), so the remaining green patches and critical infrastructure will need extra monitoring, 
+             early-warning sensors, and fuel management around them.`
+          );
+        }
+      
+        ul.innerHTML = steps.map(s => `
+          <li>
+            <span style="
+              font-size:11px;
+              text-transform:uppercase;
+              letter-spacing:0.06em;
+              opacity:0.7;
+              display:inline-block;
+              margin-bottom:4px;
+            ">
+              ${s.horizon}
+            </span><br />
+            <b>${s.title}</b><br />
+            <span class="muted small">${s.note}</span>
+          </li>
+        `).join("");
       }
+      
+      
+
+      (async () => {
+        try {
+          const summary = await loadSummary();
+
+          document.getElementById("acresBurned").textContent =
+            summary.acres.burned.toLocaleString();
+          document.getElementById("acresUnburned").textContent =
+            summary.acres.unburned.toLocaleString();
+          document.getElementById("reburnRiskPct").textContent =
+            `${summary.reburnRiskPercent}%`;
+          document.getElementById("historicCount").textContent =
+            `${summary.historicFireCount} events`;
+
+          renderPie(summary.burn.labels, summary.burn.percent);
+          renderNextSteps(summary);
+        } catch (e) {
+          console.warn("Dashboard failed to load summary:", e);
+        }
+      })();
     </script>
+
+    
+
   </body>
 </html>

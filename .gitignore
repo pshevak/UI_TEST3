@@ -1,5 +1,6 @@
 #Test3
 .venv/
+.venv_py312
 *.pyc
 *.pth
 DATA
